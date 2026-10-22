@@ -281,7 +281,9 @@ export function buildClientSummary(client: Client, guides: GuideLink[] = []): st
       if (g.walkthroughProvided)
         walkthroughs.push({ name, by: g.walkthroughBy, at: g.walkthroughAt });
       if (isGuideOutstanding(g, guides))
-        outstandingGuides.push(name + (guideIsSupplied(g, guides) ? "" : " [Guide link not added]"));
+        outstandingGuides.push(
+          name + (guideIsSupplied(g, guides) ? "" : " [Guide link not added]"),
+        );
     }
   }
 

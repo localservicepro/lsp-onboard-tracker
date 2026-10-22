@@ -111,9 +111,7 @@ function GuideRow({
 
   const openSend = () => {
     setSendChannel(record.channel ?? "email");
-    setSendDate(
-      record.sentAt ? record.sentAt.slice(0, 16) : new Date().toISOString().slice(0, 16),
-    );
+    setSendDate(record.sentAt ? record.sentAt.slice(0, 16) : new Date().toISOString().slice(0, 16));
     setSendBy(record.sentBy ?? actor);
     setSendSupplied(record.suppliedUrlOrVersion ?? suppliedRef ?? "");
     setSendErr("");
@@ -417,9 +415,7 @@ function GuideRow({
           className={inputCls}
           placeholder="Exemption reason..."
           defaultValue={record.notApplicableReason ?? ""}
-          onBlur={(e) =>
-            onSetGuide(record.guideId, { notApplicableReason: e.target.value }, actor)
-          }
+          onBlur={(e) => onSetGuide(record.guideId, { notApplicableReason: e.target.value }, actor)}
         />
         <label className="mt-2 flex items-center gap-2 text-xs font-semibold cursor-pointer">
           <input

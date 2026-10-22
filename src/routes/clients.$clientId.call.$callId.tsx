@@ -25,8 +25,15 @@ export const Route = createFileRoute("/clients/$clientId/call/$callId")({
 
 function CallSessionPage() {
   const { clientId, callId } = Route.useParams();
-  const { state, setCallItem, setCallGuide, updateCall, finishCall, saveProgress, updateGuideLink } =
-    useStore();
+  const {
+    state,
+    setCallItem,
+    setCallGuide,
+    updateCall,
+    finishCall,
+    saveProgress,
+    updateGuideLink,
+  } = useStore();
   const navigate = useNavigate();
   const client = state.clients.find((c) => c.id === clientId);
   const call = client?.calls.find((c) => c.id === callId);
@@ -69,7 +76,7 @@ function CallSessionPage() {
   const guides = state.settings.guides;
   const cs = deriveCallStatus(call, guides);
   const block = callCompletionBlock(call, guides);
-  const prog = callItemProgress(call);
+  const prog = callItemProgress(call, guides);
   const team = state.settings.team;
 
   const onCopy = async () => {
@@ -89,7 +96,12 @@ function CallSessionPage() {
     setSaveState("saving");
     try {
       // Persist the follow-up fields along with the rest of the in-memory state.
-      updateCall(client.id, call.id, { followUpAction: fuAction, followUpOwner: fuOwner, followUpDate: fuDate || undefined }, actor);
+      updateCall(
+        client.id,
+        call.id,
+        { followUpAction: fuAction, followUpOwner: fuOwner, followUpDate: fuDate || undefined },
+        actor,
+      );
       await saveProgress();
       setSavedAt(new Date().toLocaleTimeString());
       setSaveState("saved");
@@ -113,9 +125,12 @@ function CallSessionPage() {
       if (!fuDate) missing.push("follow-up date");
       if (missing.length > 0) {
         setFinishErr(`Follow-up required — add: ${missing.join(", ")}.`);
-        if (!fuAction.trim() && fuActionRef.current) fuActionRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
-        else if (!fuOwner.trim() && fuOwnerRef.current) fuOwnerRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
-        else if (!fuDate && fuDateRef.current) fuDateRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
+        if (!fuAction.trim() && fuActionRef.current)
+          fuActionRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
+        else if (!fuOwner.trim() && fuOwnerRef.current)
+          fuOwnerRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
+        else if (!fuDate && fuDateRef.current)
+          fuDateRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
         if (!fuAction.trim()) fuActionRef.current?.focus();
         else if (!fuOwner.trim()) fuOwnerRef.current?.focus();
         else if (!fuDate) fuDateRef.current?.focus();
@@ -196,7 +211,7 @@ function CallSessionPage() {
           <div className="flex items-center gap-2 font-bold text-destructive">
             <span className="h-2 w-2 rounded-full bg-destructive" />
             Checklist not complete —{" "}
-            {(prog.needsHelpCount ?? 0 > 0) ? "follow-up required" : "items remaining"}
+            {(prog.needsHelpCount ?? 0) > 0 ? "follow-up required" : "items remaining"}
           </div>
           <ul className="mt-2 list-disc space-y-1 pl-5 text-xs text-destructive/90">
             {block.reasons.map((r, i) => (
@@ -329,7 +344,9 @@ function CallSessionPage() {
                 </select>
               </div>
               <div>
-                <span className="mb-1 block text-[11px] text-muted-foreground">Follow-up Date *</span>
+                <span className="mb-1 block text-[11px] text-muted-foreground">
+                  Follow-up Date *
+                </span>
                 <input
                   ref={fuDateRef}
                   type="date"

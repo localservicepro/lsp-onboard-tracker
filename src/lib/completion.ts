@@ -195,12 +195,17 @@ export function deriveCallStatus(call: Call, guides: GuideLink[] = []): CallStat
   const block = callCompletionBlock(call, guides);
   if (block.ok) return "completed";
 
+  // Not complete. A call that has been touched (any item changed, guide
+  // recorded, notes added, or finished) but cannot be completed needs
+  // follow-up. Only a completely untouched call is "not started" — we do
+  // NOT label untouched items as blockers just because a call hasn't
+  // happened yet.
   const touched =
     items.some((i) => i.status !== "not_checked") ||
     call.guides.some((g) => g.sent || g.walkthroughProvided) ||
     !!call.notes?.trim() ||
     !!call.finishedAt;
-  return touched ? "in_progress" : "not_started";
+  return touched ? "needs_followup" : "not_started";
 }
 
 // ---- Client-level ----

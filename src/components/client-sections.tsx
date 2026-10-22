@@ -19,11 +19,7 @@ import {
   isGuideExempt,
   isGuideOutstanding,
 } from "../lib/completion";
-import {
-  CLIENT_ACTION_STATUSES,
-  STAFF_CHECK_STATUSES,
-  REVIEW_OUTCOMES,
-} from "../lib/types";
+import { CLIENT_ACTION_STATUSES, STAFF_CHECK_STATUSES, REVIEW_OUTCOMES } from "../lib/types";
 
 export const inputCls =
   "w-full rounded-xl border border-border bg-background px-3 py-2 text-xs sm:text-sm text-foreground outline-hidden focus:ring-2 focus:ring-accent min-h-[40px]";
@@ -413,4 +409,3 @@ export function GuideDerivedRow({
     </div>
   );
 }
-
