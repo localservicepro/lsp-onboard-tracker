@@ -1,8 +1,9 @@
 import { Link, useRouterState, Outlet } from "@tanstack/react-router";
 import type { ReactNode } from "react";
+import { useState, useEffect } from "react";
 import { useStore } from "../lib/store";
+import { useAuth } from "../lib/auth";
 import { deriveClientStatus } from "../lib/completion";
-import { StatusBadge } from "./status-badge";
 
 interface NavItem {
   to: "/" | "/follow-up" | "/settings";
@@ -17,12 +18,63 @@ const NAV: NavItem[] = [
 ];
 
 export function AppShell({ children }: { children: ReactNode }) {
-  const { state } = useStore();
+  const { staff, ready, loading, error, signIn, signOut } = useAuth();
+
+  // Auth gate: show sign-in before any client records.
+  if (!ready) {
+    return (
+      <div className="grid min-h-screen place-items-center bg-background px-4">
+        <p className="text-sm text-muted-foreground">Loading…</p>
+      </div>
+    );
+  }
+
+  if (!staff) {
+    return <SignInScreen loading={loading} error={error} onSignIn={signIn} />;
+  }
+
+  if (!staff.approved) {
+    return (
+      <div className="grid min-h-screen place-items-center bg-background px-4">
+        <div className="max-w-md text-center">
+          <div className="mb-4 grid h-12 w-12 place-items-center rounded-xl bg-primary font-display text-xl font-bold text-primary-foreground">
+            L
+          </div>
+          <h1 className="font-display text-xl font-bold text-foreground">Account not approved</h1>
+          <p className="mt-2 text-sm text-muted-foreground">
+            You are signed in as <strong className="text-foreground">{staff.email}</strong> but this
+            account is not on the approved staff list. Contact an administrator to be added to the
+            staff table before accessing client records.
+          </p>
+          <button
+            onClick={() => void signOut()}
+            className="mt-6 rounded-xl border border-border bg-card px-4 py-2 text-sm font-bold text-foreground hover:bg-secondary cursor-pointer min-h-[40px]"
+          >
+            Sign out
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return <ShellContent>{children}</ShellContent>;
+}
+
+function ShellContent({ children }: { children: ReactNode }) {
+  const { state, loading, loadError, reload } = useStore();
+  const { staff, signOut } = useAuth();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const guides = state.settings.guides;
   const needsFollowUpCount = state.clients.filter(
     (c) => deriveClientStatus(c, guides) === "needs_followup",
   ).length;
+
+  // Reload the store when auth is confirmed — StoreProvider mounts before
+  // auth is ready, so its initial getState() 401s. Retry here.
+  useEffect(() => {
+    void reload();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [staff?.userId]);
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -60,18 +112,131 @@ export function AppShell({ children }: { children: ReactNode }) {
               );
             })}
           </nav>
+          {staff && (
+            <div className="ml-2 flex items-center gap-2">
+              <span className="hidden text-xs font-semibold text-muted-foreground sm:block">
+                {staff.displayName}
+              </span>
+              <button
+                onClick={() => void signOut()}
+                className="rounded-md border border-border px-2.5 py-1 text-xs font-bold text-muted-foreground hover:bg-secondary hover:text-foreground cursor-pointer"
+              >
+                Sign out
+              </button>
+            </div>
+          )}
         </div>
       </header>
-      <main className="mx-auto max-w-6xl px-4 py-6">{children ?? <Outlet />}</main>
+      <main className="mx-auto max-w-6xl px-4 py-6">
+        {loading ? (
+          <div className="grid place-items-center py-20">
+            <p className="text-sm text-muted-foreground">Loading records…</p>
+          </div>
+        ) : loadError ? (
+          <div className="mx-auto max-w-md rounded-2xl border border-destructive/40 bg-destructive/10 p-6 text-center">
+            <p className="text-sm font-semibold text-destructive">Failed to load records</p>
+            <p className="mt-1 text-xs text-muted-foreground">{loadError}</p>
+            <button
+              onClick={() => void reload()}
+              className="mt-4 rounded-xl border border-destructive/40 bg-card px-4 py-2 text-xs font-bold text-destructive hover:bg-destructive/10 cursor-pointer min-h-[40px]"
+            >
+              Retry
+            </button>
+          </div>
+        ) : (
+          (children ?? <Outlet />)
+        )}
+      </main>
       <footer className="mx-auto max-w-6xl px-4 pb-10 pt-6">
         <div className="rounded-md border border-border/70 bg-card/40 px-3 py-1.5 text-[11px] text-muted-foreground">
-          <strong className="font-medium text-foreground/90">Session-only storage</strong> — changes
-          may be lost on reload and are not shared across browsers or staff. Secure staff
-          authentication and shared persistent storage are required before real client use.
+          <strong className="font-medium text-foreground/90">Cloud-connected</strong> — records are
+          stored in the Cloud database. Access requires approved staff sign-in. Email notifications
+          require provider setup before live use.
         </div>
       </footer>
     </div>
   );
 }
 
-export { StatusBadge };
+function SignInScreen({
+  loading,
+  error,
+  onSignIn,
+}: {
+  loading: boolean;
+  error: string | null;
+  onSignIn: (email: string, password: string) => Promise<{ ok: boolean; error?: string }>;
+}) {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [err, setErr] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  const onSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (submitting) return;
+    setErr(null);
+    setSubmitting(true);
+    const res = await onSignIn(email.trim(), password);
+    setSubmitting(false);
+    if (!res.ok) setErr(res.error ?? "Sign-in failed");
+  };
+
+  return (
+    <div className="grid min-h-screen place-items-center bg-background px-4">
+      <div className="w-full max-w-sm">
+        <div className="mb-6 text-center">
+          <div className="mx-auto mb-3 grid h-12 w-12 place-items-center rounded-xl bg-primary font-display text-xl font-bold text-primary-foreground">
+            L
+          </div>
+          <h1 className="font-display text-xl font-bold text-foreground">LSP Onboarding</h1>
+          <p className="mt-1 text-xs text-muted-foreground">Staff sign-in required</p>
+        </div>
+        <form
+          onSubmit={onSubmit}
+          className="space-y-3 rounded-2xl border border-border bg-card p-5 shadow-sm"
+        >
+          <div>
+            <label className="mb-1 block text-xs font-semibold text-muted-foreground">Email</label>
+            <input
+              type="email"
+              required
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-hidden focus:ring-2 focus:ring-accent min-h-[40px]"
+              placeholder="you@localservicepro.com.au"
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-semibold text-muted-foreground">
+              Password
+            </label>
+            <input
+              type="password"
+              required
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-hidden focus:ring-2 focus:ring-accent min-h-[40px]"
+              placeholder="••••••••"
+            />
+          </div>
+          {(err || error) && (
+            <p className="rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs font-semibold text-destructive">
+              {err ?? error}
+            </p>
+          )}
+          <button
+            type="submit"
+            disabled={submitting || loading}
+            className="w-full rounded-xl bg-primary px-4 py-2.5 text-sm font-bold text-primary-foreground shadow-md shadow-primary/20 hover:bg-primary/90 disabled:opacity-60 min-h-[44px] cursor-pointer"
+          >
+            {submitting || loading ? "Signing in…" : "Sign in"}
+          </button>
+        </form>
+        <p className="mt-4 text-center text-[11px] text-muted-foreground">
+          No public registration. Only approved staff accounts can access client records.
+        </p>
+      </div>
+    </div>
+  );
+}

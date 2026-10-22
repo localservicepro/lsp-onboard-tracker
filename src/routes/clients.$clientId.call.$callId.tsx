@@ -7,6 +7,7 @@ import { StatusBadge } from "../components/status-badge";
 import { buildCallSummary, copyToClipboard } from "../lib/call-summary";
 import { CallItemRow, GuideDerivedRow, inputCls } from "../components/client-sections";
 import { CallGuidesSection } from "../components/guides-section";
+import { toast } from "sonner";
 
 export const Route = createFileRoute("/clients/$clientId/call/$callId")({
   head: () => ({
@@ -95,14 +96,11 @@ function CallSessionPage() {
     if (saveState === "saving") return; // prevent duplicate clicks
     setSaveState("saving");
     try {
-      // Persist the follow-up fields along with the rest of the in-memory state.
-      updateCall(
-        client.id,
-        call.id,
-        { followUpAction: fuAction, followUpOwner: fuOwner, followUpDate: fuDate || undefined },
-        actor,
-      );
-      await saveProgress();
+      await saveProgress(client.id, call.id, {
+        followUpAction: fuAction,
+        followUpOwner: fuOwner,
+        followUpDate: fuDate || undefined,
+      });
       setSavedAt(new Date().toLocaleTimeString());
       setSaveState("saved");
     } catch {
@@ -139,7 +137,7 @@ function CallSessionPage() {
     }
     setFinishing(true);
     try {
-      finishCall(
+      const result = await finishCall(
         client.id,
         call.id,
         {
@@ -149,6 +147,16 @@ function CallSessionPage() {
         },
         actor,
       );
+      if (!result.ok) {
+        setFinishing(false);
+        setFinishErr(result.emailError ?? "Could not finish the call. Please try again.");
+        return;
+      }
+      if (result.emailError) {
+        toast.error("Call saved — notification failed. Retry from the client page.");
+      } else {
+        toast.success("Call finished — saved to Cloud.");
+      }
       navigate({ to: "/clients/$clientId", params: { clientId: client.id } });
     } catch (e) {
       setFinishing(false);
@@ -407,7 +415,7 @@ function CallSessionPage() {
             disabled={saveState === "saving"}
             className="rounded-xl border border-border bg-card px-4 py-2 text-xs font-bold text-foreground hover:bg-secondary disabled:opacity-60 min-h-[40px] cursor-pointer"
           >
-            {saveState === "saving" ? "Saving…" : "Save Progress — this session only"}
+            {saveState === "saving" ? "Saving…" : "Save Progress"}
           </button>
           {saveState === "error" && (
             <button

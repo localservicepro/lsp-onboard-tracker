@@ -38,7 +38,6 @@ import {
   sendProgressUpdate as sendProgressUpdateFn,
 } from "./api.functions";
 import type { NewClientInput } from "./store-types";
-void type NewClientInput;
 
 const nowISO = () => new Date().toISOString();
 const rid = (p: string) => `${p}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -171,8 +170,8 @@ export function useStoreActions(state: AppState, setState: SetState, reload: Rel
         updatedAt: nowISO(),
         calls: [...c.calls, call],
       }));
-      void _startCall({ data: { clientId, type, staffMember, ...(date ? { date } : {}) } }).catch(() =>
-        void reload(),
+      void _startCall({ data: { clientId, type, staffMember, ...(date ? { date } : {}) } }).catch(
+        () => void reload(),
       );
       return id;
     },
@@ -239,9 +238,22 @@ export function useStoreActions(state: AppState, setState: SetState, reload: Rel
     [patchCall, _updateCall, _finishCall, reload],
   );
 
-  const saveProgress = useCallback(async (): Promise<void> => {
-    await Promise.resolve();
-  }, []);
+  const saveProgress = useCallback(
+    async (clientId: string, callId: string, patch: Partial<Call>): Promise<void> => {
+      patchCall(clientId, callId, (call) => ({ ...call, ...patch, updatedAt: nowISO() }));
+      await _updateCall({
+        data: {
+          callId,
+          ...(patch.staffMember ? { staffMember: patch.staffMember } : {}),
+          ...(patch.notes !== undefined ? { notes: patch.notes } : {}),
+          ...(patch.followUpAction !== undefined ? { followUpAction: patch.followUpAction } : {}),
+          ...(patch.followUpOwner !== undefined ? { followUpOwner: patch.followUpOwner } : {}),
+          ...(patch.followUpDate !== undefined ? { followUpDate: patch.followUpDate } : {}),
+        },
+      });
+    },
+    [patchCall, _updateCall],
+  );
 
   const sendProgressEmail = useCallback(
     async (callId: string): Promise<{ ok: boolean; emailError?: string | undefined }> => {
@@ -366,7 +378,9 @@ export function useStoreActions(state: AppState, setState: SetState, reload: Rel
           label: patch.label ?? state.settings.guides.find((g) => g.id === id)?.label ?? "",
           ...(patch.url !== undefined ? { url: patch.url } : {}),
           ...(patch.documentTitle !== undefined ? { documentTitle: patch.documentTitle } : {}),
-          ...(patch.documentVersion !== undefined ? { documentVersion: patch.documentVersion } : {}),
+          ...(patch.documentVersion !== undefined
+            ? { documentVersion: patch.documentVersion }
+            : {}),
         },
       }).catch(() => void reload());
     },
@@ -439,8 +453,8 @@ export function useStoreActions(state: AppState, setState: SetState, reload: Rel
           ),
         },
       }));
-      void _addTemplateItem({ data: { templateId, label, kind, required } }).catch(() =>
-        void reload(),
+      void _addTemplateItem({ data: { templateId, label, kind, required } }).catch(
+        () => void reload(),
       );
     },
     [setState, _addTemplateItem, reload],
@@ -485,9 +499,7 @@ export function useStoreActions(state: AppState, setState: SetState, reload: Rel
         settings: {
           ...s.settings,
           templates: s.settings.templates.map((t) =>
-            t.id === templateId
-              ? { ...t, items: t.items.filter((i) => i.id !== itemId) }
-              : t,
+            t.id === templateId ? { ...t, items: t.items.filter((i) => i.id !== itemId) } : t,
           ),
         },
       }));
@@ -514,9 +526,7 @@ export function useStoreActions(state: AppState, setState: SetState, reload: Rel
           ...s,
           settings: {
             ...s.settings,
-            templates: s.settings.templates.map((t) =>
-              t.id === templateId ? { ...t, items } : t,
-            ),
+            templates: s.settings.templates.map((t) => (t.id === templateId ? { ...t, items } : t)),
           },
         };
       });

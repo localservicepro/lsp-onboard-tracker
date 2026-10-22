@@ -12,6 +12,7 @@ import appCss from "../styles.css?url";
 import { reportVibeError } from "../lib/vibe-error-reporting";
 import { AppShell } from "../components/app-shell";
 import { StoreProvider } from "../lib/store";
+import { AuthProvider } from "../lib/auth";
 
 function NotFoundComponent() {
   return (
@@ -128,11 +129,13 @@ function RootComponent() {
   const { queryClient } = Route.useRouteContext();
   return (
     <QueryClientProvider client={queryClient}>
-      <StoreProvider>
-        <AppShell>
-          <Outlet />
-        </AppShell>
-      </StoreProvider>
+      <AuthProvider>
+        <StoreProvider>
+          <AppShell>
+            <Outlet />
+          </AppShell>
+        </StoreProvider>
+      </AuthProvider>
     </QueryClientProvider>
   );
 }

@@ -32,12 +32,7 @@ import {
   type CallGuideUpdate,
 } from "./mutations.server";
 import { sendProgressEmail, buildEmailSubject, buildEmailBody } from "./email.server";
-import {
-  deriveCallStatus,
-  effectiveItem,
-  isItemDone,
-  itemNeedsFollowUp,
-} from "./completion";
+import { deriveCallStatus, effectiveItem, isItemDone, itemNeedsFollowUp } from "./completion";
 import type { CallType, ItemStatus, ReviewOutcome, GuideChannel } from "./types";
 
 // ---- Load full app state ----

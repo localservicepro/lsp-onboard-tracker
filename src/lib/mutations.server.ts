@@ -480,21 +480,21 @@ export async function seedCallChecklist(
   if (tiErr) throw tiErr;
 
   // Insert call_items snapshots.
-  const itemInserts: Database["public"]["Tables"]["call_items"]["Insert"][] = (
-    tplItems ?? []
-  ).map((ti) => ({
-    call_id: callId,
-    template_item_id: ti.id,
-    label: ti.label,
-    kind: ti.kind,
-    required: ti.required,
-    status: "not_checked",
-    review_send: ti.review_send ?? false,
-    guide_derived: ti.guide_derived ?? false,
-    demo_practice: ti.demo_practice ?? false,
-    help_text: ti.help_text,
-    sort_order: ti.sort_order,
-  }));
+  const itemInserts: Database["public"]["Tables"]["call_items"]["Insert"][] = (tplItems ?? []).map(
+    (ti) => ({
+      call_id: callId,
+      template_item_id: ti.id,
+      label: ti.label,
+      kind: ti.kind,
+      required: ti.required,
+      status: "not_checked",
+      review_send: ti.review_send ?? false,
+      guide_derived: ti.guide_derived ?? false,
+      demo_practice: ti.demo_practice ?? false,
+      help_text: ti.help_text,
+      sort_order: ti.sort_order,
+    }),
+  );
   if (itemInserts.length > 0) {
     const { error: ciErr } = await supabase.from("call_items").insert(itemInserts);
     if (ciErr) throw ciErr;

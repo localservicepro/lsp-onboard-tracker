@@ -52,7 +52,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         userId,
         email,
         approved: !!staffRow,
-        displayName: (staffRow as { display_name?: string } | null)?.display_name ?? email ?? "Staff",
+        displayName:
+          (staffRow as { display_name?: string } | null)?.display_name ?? email ?? "Staff",
       });
     } catch (e) {
       setStaff(null);
@@ -78,22 +79,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => sub.subscription.unsubscribe();
   }, [refresh]);
 
-  const signIn = useCallback(async (email: string, password: string) => {
-    setLoading(true);
-    setError(null);
-    try {
-      const { error: signInErr } = await supabase.auth.signInWithPassword({ email, password });
-      if (signInErr) return { ok: false, error: signInErr.message };
-      await refresh();
-      return { ok: true };
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : "Sign-in failed";
-      setError(msg);
-      return { ok: false, error: msg };
-    } finally {
-      setLoading(false);
-    }
-  }, [refresh]);
+  const signIn = useCallback(
+    async (email: string, password: string) => {
+      setLoading(true);
+      setError(null);
+      try {
+        const { error: signInErr } = await supabase.auth.signInWithPassword({ email, password });
+        if (signInErr) return { ok: false, error: signInErr.message };
+        await refresh();
+        return { ok: true };
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : "Sign-in failed";
+        setError(msg);
+        return { ok: false, error: msg };
+      } finally {
+        setLoading(false);
+      }
+    },
+    [refresh],
+  );
 
   const signOut = useCallback(async () => {
     await supabase.auth.signOut();

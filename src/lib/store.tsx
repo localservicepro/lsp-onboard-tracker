@@ -62,7 +62,11 @@ export interface StoreApi {
     patch: Partial<import("./types").Call>,
     actor?: string,
   ) => Promise<{ ok: boolean; emailError?: string | undefined }>;
-  saveProgress: () => Promise<void>;
+  saveProgress: (
+    clientId: string,
+    callId: string,
+    patch: Partial<import("./types").Call>,
+  ) => Promise<void>;
   sendProgressEmail: (callId: string) => Promise<{ ok: boolean; emailError?: string | undefined }>;
   setCallItem: (
     clientId: string,
