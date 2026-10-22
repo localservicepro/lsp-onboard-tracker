@@ -2,30 +2,22 @@ import { createContext, useContext, useMemo, useState, useCallback, type ReactNo
 import type {
   AppState,
   Client,
-  AccessCheckItem,
-  ConnectionItem,
-  TaskItem,
-  StaffVerificationItem,
-  Blocker,
-  GuideSentRecord,
-  CallSession,
+  Call,
+  CallItem,
+  CallGuideRecord,
   Settings,
   GuideLink,
   TeamMember,
   ChecklistTemplate,
+  TemplateItem,
   AuditEntry,
-  ConnectionStatus,
-  TaskStatus,
-  StaffVerificationStatus,
-  ReviewOutcome,
+  CallType,
+  ItemStatus,
   GuideChannel,
+  ReviewOutcome,
 } from "./types";
-import { seedState } from "./seed";
-import {
-  DEFAULT_ACCESS_CHECKS,
-  DEFAULT_CONNECTION_CONFIGS,
-  DEFAULT_CLIENT_PRACTICAL_TASKS,
-} from "./types";
+import { seedState, buildCallItems, buildCallGuides } from "./seed";
+import { DEFAULT_CONNECTION_ITEMS, DEFAULT_ONBOARDING_ITEMS } from "./types";
 
 let counter = 2000;
 function nextId(prefix: string): string {
@@ -45,34 +37,23 @@ function pushAudit(
   to: string,
   reason: string,
 ): AuditEntry[] {
-  return [
-    ...arr,
-    { id: nextId("aud"), at: ts(), actor, field, from, to, reason },
-  ];
+  return [...arr, { id: nextId("aud"), at: ts(), actor, field, from, to, reason }];
 }
 
 interface StoreApi {
   state: AppState;
   // Clients
   addClient: (input: NewClientInput) => string;
-  updateClient: (id: string, patch: Partial<Omit<Client, "id" | "audit">>, actor: string, reason?: string) => void;
+  updateClient: (id: string, patch: Partial<Omit<Client, "id" | "calls" | "audit">>, actor: string, reason?: string) => void;
   deleteClient: (id: string) => void;
-  // Access checks
-  setAccessCheck: (clientId: string, checkId: string, patch: Partial<AccessCheckItem>, actor: string, reason?: string) => void;
-  // Connections
-  setConnection: (clientId: string, connId: string, patch: Partial<ConnectionItem>, actor: string, reason?: string) => void;
-  // Practical tasks
-  setTask: (clientId: string, taskId: string, patch: Partial<TaskItem>, actor: string, reason?: string) => void;
-  // Staff verification
-  setStaffVerification: (clientId: string, patch: Partial<StaffVerificationItem>, actor: string, reason?: string) => void;
-  // Blockers
-  addBlocker: (clientId: string, input: NewBlockerInput, actor: string) => void;
-  updateBlocker: (clientId: string, blockerId: string, patch: Partial<Blocker>, actor: string, reason?: string) => void;
-  // Guides
-  setGuide: (clientId: string, guideId: string, patch: Partial<GuideSentRecord>, actor: string, reason?: string) => void;
-  // Call sessions
-  addCallSession: (clientId: string, input: NewCallInput, actor: string) => string;
-  updateCallSession: (clientId: string, callId: string, patch: Partial<CallSession>, actor: string) => void;
+  // Calls
+  startCall: (clientId: string, type: CallType, staffMember: string, date?: string) => string;
+  updateCall: (clientId: string, callId: string, patch: Partial<Call>, actor: string) => void;
+  finishCall: (clientId: string, callId: string, patch: Partial<Call>, actor: string) => void;
+  // Call items
+  setCallItem: (clientId: string, callId: string, itemId: string, patch: Partial<CallItem>, actor: string, reason?: string) => void;
+  // Call guides
+  setCallGuide: (clientId: string, callId: string, guideId: string, patch: Partial<CallGuideRecord>, actor: string, reason?: string) => void;
   // Settings
   updateSettings: (patch: Partial<Settings>) => void;
   addGuide: (label: string, url?: string) => void;
@@ -80,39 +61,27 @@ interface StoreApi {
   removeGuide: (id: string) => void;
   addTeamMember: (name: string) => void;
   removeTeamMember: (id: string) => void;
-  addTemplate: (name: string, description?: string) => void;
+  // Templates
+  addTemplateItem: (templateId: string, label: string, kind: TemplateItem["kind"], required: boolean) => void;
+  updateTemplateItem: (templateId: string, itemId: string, patch: Partial<TemplateItem>) => void;
+  removeTemplateItem: (templateId: string, itemId: string) => void;
+  reorderTemplateItem: (templateId: string, itemId: string, dir: -1 | 1) => void;
   updateTemplate: (id: string, patch: Partial<ChecklistTemplate>) => void;
-  removeTemplate: (id: string) => void;
   reset: () => void;
 }
 
 export interface NewClientInput {
   businessName: string;
   clientName: string;
-  ghlLocationId?: string | undefined;
-  ghlLink?: string | undefined;
   assignedTeamMember: string;
-  callDate: string;
-  plan: string;
+  callType: CallType;
+  callDate?: string | undefined;
+  contactDetails?: string | undefined;
+  ghlLink?: string | undefined;
   notes?: string | undefined;
-  nextCallDate?: string | undefined;
   isTestRecord?: boolean | undefined;
   testPurpose?: string | undefined;
   accountContext?: string | undefined;
-}
-
-export interface NewBlockerInput {
-  summary: string;
-  owner: string;
-  nextAction: string;
-  dueDate?: string | undefined;
-}
-
-export interface NewCallInput {
-  date: string;
-  staffMember: string;
-  notes?: string | undefined;
-  summary?: string | undefined;
 }
 
 const StoreContext = createContext<StoreApi | null>(null);
@@ -121,18 +90,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<AppState>(() => seedState());
 
   const updateClient = useCallback(
-    (id: string, patch: Partial<Omit<Client, "id" | "audit">>, actor: string, reason?: string) => {
+    (id: string, patch: Partial<Omit<Client, "id" | "calls" | "audit">>, actor: string, reason?: string) => {
       setState((s) => ({
         ...s,
-        clients: s.clients.map((c) => {
-          if (c.id !== id) return c;
-          const next: Client = { ...c, ...patch, id: c.id, updatedAt: ts() };
-          if (patch.overallStatus && patch.overallStatus !== c.overallStatus) {
-            next.audit = pushAudit(c.audit, actor, "Overall status", c.overallStatus, patch.overallStatus, reason ?? "");
-          }
-          return next;
-        }),
+        clients: s.clients.map((c) => (c.id === id ? { ...c, ...patch, id, updatedAt: ts() } : c)),
       }));
+      void actor;
+      void reason;
     },
     [],
   );
@@ -140,56 +104,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const addClient = useCallback((input: NewClientInput) => {
     const id = nextId("client");
     const now = ts();
-    const accessChecks: AccessCheckItem[] = DEFAULT_ACCESS_CHECKS.map((label, i) => ({
-      id: `acc-${id}-${i}`,
-      label,
-      checked: false,
-      audit: [],
-    }));
-    const connections: ConnectionItem[] = DEFAULT_CONNECTION_CONFIGS.map((cfg, i) => ({
-      id: `conn-${id}-${i}`,
-      label: cfg.label,
-      required: cfg.required,
-      status: "not_checked",
-      audit: [],
-    }));
-    const tasks: TaskItem[] = DEFAULT_CLIENT_PRACTICAL_TASKS.map((label, i) => ({
-      id: `task-${id}-${i}`,
-      label,
-      status: "not_started",
-      audit: [],
-    }));
-    const staffVerification: StaffVerificationItem = {
-      id: `sv-${id}`,
-      label: "Staff checks recorded result in LSP",
-      status: "not_checked",
-      audit: [],
-    };
-    const guides: GuideSentRecord[] = state.settings.guides.map((g) => ({
-      guideId: g.id,
-      sent: false,
-      audit: [],
-    }));
     const client: Client = {
       id,
       businessName: input.businessName,
       clientName: input.clientName,
-      ghlLocationId: input.ghlLocationId,
-      ghlLink: input.ghlLink,
       assignedTeamMember: input.assignedTeamMember,
-      callDate: input.callDate,
-      plan: input.plan,
-      overallStatus: "not_started",
+      contactDetails: input.contactDetails,
+      ghlLink: input.ghlLink,
       notes: input.notes,
-      nextCallDate: input.nextCallDate,
-      accessChecks,
-      connections,
-      tasks,
-      staffVerification,
-      blockers: [],
-      guides,
-      callSessions: [],
-      audit: [],
+      nextCallType: input.callType,
+      nextCallDate: input.callDate,
+      calls: [],
       isTestRecord: input.isTestRecord,
       testPurpose: input.testPurpose,
       accountContext: input.accountContext,
@@ -198,14 +123,74 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     };
     setState((s) => ({ ...s, clients: [...s.clients, client] }));
     return id;
-  }, [state.settings.guides]);
+  }, []);
 
   const deleteClient = useCallback((id: string) => {
     setState((s) => ({ ...s, clients: s.clients.filter((c) => c.id !== id) }));
   }, []);
 
-  const setAccessCheck = useCallback(
-    (clientId: string, checkId: string, patch: Partial<AccessCheckItem>, actor: string, reason?: string) => {
+  const startCall = useCallback((clientId: string, type: CallType, staffMember: string, date?: string) => {
+    const id = nextId("call");
+    setState((s) => ({
+      ...s,
+      clients: s.clients.map((c) => {
+        if (c.id !== clientId) return c;
+        const tpl = s.settings.templates.find((t) => t.callType === type);
+        const items = tpl ? buildCallItems(tpl) : [];
+        const guides = buildCallGuides(s.settings.guides);
+        const call: Call = {
+          id,
+          clientId,
+          type,
+          date: date ?? new Date().toISOString().slice(0, 10),
+          staffMember,
+          items,
+          guides,
+          createdAt: ts(),
+          updatedAt: ts(),
+        };
+        return { ...c, updatedAt: ts(), calls: [...c.calls, call] };
+      }),
+    }));
+    return id;
+  }, []);
+
+  const updateCall = useCallback((clientId: string, callId: string, patch: Partial<Call>, actor: string) => {
+    void actor;
+    setState((s) => ({
+      ...s,
+      clients: s.clients.map((c) =>
+        c.id !== clientId
+          ? c
+          : {
+              ...c,
+              updatedAt: ts(),
+              calls: c.calls.map((call) => (call.id === callId ? { ...call, ...patch, updatedAt: ts() } : call)),
+            },
+      ),
+    }));
+  }, []);
+
+  const finishCall = useCallback((clientId: string, callId: string, patch: Partial<Call>, actor: string) => {
+    void actor;
+    setState((s) => ({
+      ...s,
+      clients: s.clients.map((c) =>
+        c.id !== clientId
+          ? c
+          : {
+              ...c,
+              updatedAt: ts(),
+              calls: c.calls.map((call) =>
+                call.id === callId ? { ...call, ...patch, finishedAt: ts(), updatedAt: ts() } : call,
+              ),
+            },
+      ),
+    }));
+  }, []);
+
+  const setCallItem = useCallback(
+    (clientId: string, callId: string, itemId: string, patch: Partial<CallItem>, actor: string, reason?: string) => {
       setState((s) => ({
         ...s,
         clients: s.clients.map((c) => {
@@ -213,16 +198,23 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           return {
             ...c,
             updatedAt: ts(),
-            accessChecks: c.accessChecks.map((a) => {
-              if (a.id !== checkId) return a;
-              const from = a.checked ? "Checked" : "Unchecked";
-              const next: AccessCheckItem = { ...a, ...patch };
-              if (patch.checked !== undefined && patch.checked !== a.checked) {
-                next.audit = pushAudit(a.audit, actor, `Access check: ${a.label}`, from, patch.checked ? "Checked" : "Unchecked", reason ?? "");
-              } else if (reason) {
-                next.audit = pushAudit(a.audit, actor, `Access check: ${a.label}`, from, from, reason);
-              }
-              return next;
+            calls: c.calls.map((call) => {
+              if (call.id !== callId) return call;
+              return {
+                ...call,
+                updatedAt: ts(),
+                items: call.items.map((it) => {
+                  if (it.id !== itemId) return it;
+                  const from = it.status;
+                  const next: CallItem = { ...it, ...patch };
+                  if (patch.status && patch.status !== from) {
+                    next.audit = pushAudit(it.audit, actor, `Item: ${it.label}`, from, patch.status, reason ?? "");
+                  } else if (reason) {
+                    next.audit = pushAudit(it.audit, actor, `Item: ${it.label}`, from, from, reason);
+                  }
+                  return next;
+                }),
+              };
             }),
           };
         }),
@@ -231,8 +223,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     [],
   );
 
-  const setConnection = useCallback(
-    (clientId: string, connId: string, patch: Partial<ConnectionItem>, actor: string, reason?: string) => {
+  const setCallGuide = useCallback(
+    (clientId: string, callId: string, guideId: string, patch: Partial<CallGuideRecord>, actor: string, reason?: string) => {
       setState((s) => ({
         ...s,
         clients: s.clients.map((c) => {
@@ -240,191 +232,31 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           return {
             ...c,
             updatedAt: ts(),
-            connections: c.connections.map((conn) => {
-              if (conn.id !== connId) return conn;
-              const from = conn.status;
-              const next: ConnectionItem = { ...conn, ...patch };
-              if (patch.status && patch.status !== from) {
-                next.audit = pushAudit(conn.audit, actor, `Connection: ${conn.label}`, from, patch.status, reason ?? "");
-              } else if (reason) {
-                next.audit = pushAudit(conn.audit, actor, `Connection: ${conn.label}`, from, from, reason);
-              }
-              return next;
+            calls: c.calls.map((call) => {
+              if (call.id !== callId) return call;
+              return {
+                ...call,
+                updatedAt: ts(),
+                guides: call.guides.map((g) => {
+                  if (g.guideId !== guideId) return g;
+                  const fromSent = g.sent ? "Sent" : "Not sent";
+                  const fromWalk = g.walkthroughProvided ? "Walkthrough" : "No walkthrough";
+                  const next: CallGuideRecord = { ...g, ...patch };
+                  const logs: AuditEntry[] = [...g.audit];
+                  if (patch.sent !== undefined && patch.sent !== g.sent) {
+                    logs.push({ id: nextId("aud"), at: ts(), actor, field: `Guide: ${guideId} (sent)`, from: fromSent, to: patch.sent ? "Sent" : "Not sent", reason: reason ?? "Guide send recorded" });
+                  }
+                  if (patch.walkthroughProvided !== undefined && patch.walkthroughProvided !== g.walkthroughProvided) {
+                    logs.push({ id: nextId("aud"), at: ts(), actor, field: `Guide: ${guideId} (walkthrough)`, from: fromWalk, to: patch.walkthroughProvided ? "Walkthrough" : "No walkthrough", reason: reason ?? "Verbal walkthrough recorded" });
+                  }
+                  if (logs.length === g.audit.length && reason) {
+                    logs.push({ id: nextId("aud"), at: ts(), actor, field: `Guide: ${guideId}`, from: fromSent, to: fromSent, reason });
+                  }
+                  next.audit = logs;
+                  return next;
+                }),
+              };
             }),
-          };
-        }),
-      }));
-    },
-    [],
-  );
-
-  const setTask = useCallback(
-    (clientId: string, taskId: string, patch: Partial<TaskItem>, actor: string, reason?: string) => {
-      setState((s) => ({
-        ...s,
-        clients: s.clients.map((c) => {
-          if (c.id !== clientId) return c;
-          return {
-            ...c,
-            updatedAt: ts(),
-            tasks: c.tasks.map((t) => {
-              if (t.id !== taskId) return t;
-              const from = t.status;
-              const next: TaskItem = { ...t, ...patch };
-              if (patch.status && patch.status !== from) {
-                next.audit = pushAudit(t.audit, actor, `Task: ${t.label}`, from, patch.status, reason ?? "");
-              } else if (reason) {
-                next.audit = pushAudit(t.audit, actor, `Task: ${t.label}`, from, from, reason);
-              }
-              return next;
-            }),
-          };
-        }),
-      }));
-    },
-    [],
-  );
-
-  const setStaffVerification = useCallback(
-    (clientId: string, patch: Partial<StaffVerificationItem>, actor: string, reason?: string) => {
-      setState((s) => ({
-        ...s,
-        clients: s.clients.map((c) => {
-          if (c.id !== clientId) return c;
-          const from = c.staffVerification.status;
-          const next: StaffVerificationItem = { ...c.staffVerification, ...patch };
-          if (patch.status && patch.status !== from) {
-            next.audit = pushAudit(c.staffVerification.audit, actor, "Staff verification", from, patch.status, reason ?? "");
-          } else if (reason) {
-            next.audit = pushAudit(c.staffVerification.audit, actor, "Staff verification", from, from, reason);
-          }
-          return { ...c, updatedAt: ts(), staffVerification: next };
-        }),
-      }));
-    },
-    [],
-  );
-
-  const addBlocker = useCallback(
-    (clientId: string, input: NewBlockerInput, actor: string) => {
-      setState((s) => ({
-        ...s,
-        clients: s.clients.map((c) => {
-          if (c.id !== clientId) return c;
-          const blocker: Blocker = {
-            id: nextId("blk"),
-            summary: input.summary,
-            owner: input.owner,
-            nextAction: input.nextAction,
-            dueDate: input.dueDate,
-            createdAt: ts(),
-            resolved: false,
-            audit: [{ id: nextId("aud"), at: ts(), actor, field: "Blocker created", from: "", to: "Open", reason: input.summary }],
-          };
-          return { ...c, updatedAt: ts(), blockers: [...c.blockers, blocker] };
-        }),
-      }));
-    },
-    [],
-  );
-
-  const updateBlocker = useCallback(
-    (clientId: string, blockerId: string, patch: Partial<Blocker>, actor: string, reason?: string) => {
-      setState((s) => ({
-        ...s,
-        clients: s.clients.map((c) => {
-          if (c.id !== clientId) return c;
-          return {
-            ...c,
-            updatedAt: ts(),
-            blockers: c.blockers.map((b) => {
-              if (b.id !== blockerId) return b;
-              const next: Blocker = { ...b, ...patch };
-              if (patch.resolved !== undefined && patch.resolved !== b.resolved) {
-                next.audit = pushAudit(b.audit, actor, "Blocker resolution", String(b.resolved), String(patch.resolved), reason ?? "");
-                if (patch.resolved === true) next.resolvedAt = ts();
-              } else if (reason) {
-                next.audit = pushAudit(b.audit, actor, "Blocker updated", "", "", reason);
-              }
-              return next;
-            }),
-          };
-        }),
-      }));
-    },
-    [],
-  );
-
-  const setGuide = useCallback(
-    (clientId: string, guideId: string, patch: Partial<GuideSentRecord>, actor: string, reason?: string) => {
-      setState((s) => ({
-        ...s,
-        clients: s.clients.map((c) => {
-          if (c.id !== clientId) return c;
-          return {
-            ...c,
-            updatedAt: ts(),
-            guides: c.guides.map((g) => {
-              if (g.guideId !== guideId) return g;
-              const fromSent = g.sent ? "Sent" : "Not sent";
-              const fromWalk = g.walkthroughProvided ? "Walkthrough" : "No walkthrough";
-              const next: GuideSentRecord = { ...g, ...patch };
-              const logs: AuditEntry[] = [...g.audit];
-              if (patch.sent !== undefined && patch.sent !== g.sent) {
-                logs.push({ id: nextId("aud"), at: ts(), actor, field: `Guide: ${guideId} (sent)`, from: fromSent, to: patch.sent ? "Sent" : "Not sent", reason: reason ?? "Guide send recorded" });
-              }
-              if (patch.walkthroughProvided !== undefined && patch.walkthroughProvided !== g.walkthroughProvided) {
-                logs.push({ id: nextId("aud"), at: ts(), actor, field: `Guide: ${guideId} (walkthrough)`, from: fromWalk, to: patch.walkthroughProvided ? "Walkthrough" : "No walkthrough", reason: reason ?? "Verbal walkthrough recorded" });
-              }
-              if (logs.length === g.audit.length && reason) {
-                logs.push({ id: nextId("aud"), at: ts(), actor, field: `Guide: ${guideId}`, from: fromSent, to: fromSent, reason });
-              }
-              next.audit = logs;
-              return next;
-            }),
-          };
-        }),
-      }));
-    },
-    [],
-  );
-
-  const addCallSession = useCallback(
-    (clientId: string, input: NewCallInput, actor: string) => {
-      void actor;
-      const id = nextId("call");
-      setState((s) => ({
-        ...s,
-        clients: s.clients.map((c) => {
-          if (c.id !== clientId) return c;
-          const session: CallSession = {
-            id,
-            clientId,
-            date: input.date,
-            staffMember: input.staffMember,
-            notes: input.notes,
-            summary: input.summary,
-            createdAt: ts(),
-          };
-          return { ...c, updatedAt: ts(), callSessions: [...c.callSessions, session] };
-        }),
-      }));
-      return id;
-    },
-    [],
-  );
-
-  const updateCallSession = useCallback(
-    (clientId: string, callId: string, patch: Partial<CallSession>, actor: string) => {
-      void actor;
-      setState((s) => ({
-        ...s,
-        clients: s.clients.map((c) => {
-          if (c.id !== clientId) return c;
-          return {
-            ...c,
-            updatedAt: ts(),
-            callSessions: c.callSessions.map((cs) => (cs.id === callId ? { ...cs, ...patch } : cs)),
           };
         }),
       }));
@@ -471,21 +303,62 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }));
   }, []);
 
-  const addTemplate = useCallback((name: string, description?: string) => {
+  const addTemplateItem = useCallback((templateId: string, label: string, kind: TemplateItem["kind"], required: boolean) => {
     setState((s) => ({
       ...s,
       settings: {
         ...s.settings,
-        templates: [
-          ...s.settings.templates,
-          {
-            id: nextId("tpl"),
-            name,
-            description,
-            connectionLabels: DEFAULT_CONNECTION_CONFIGS.map((c) => ({ label: c.label, required: c.required })),
-            taskLabels: [...DEFAULT_CLIENT_PRACTICAL_TASKS],
-          },
-        ],
+        templates: s.settings.templates.map((t) =>
+          t.id === templateId ? { ...t, items: [...t.items, { id: nextId("ti"), label, kind, required }] } : t,
+        ),
+      },
+    }));
+  }, []);
+
+  const updateTemplateItem = useCallback((templateId: string, itemId: string, patch: Partial<TemplateItem>) => {
+    setState((s) => ({
+      ...s,
+      settings: {
+        ...s.settings,
+        templates: s.settings.templates.map((t) =>
+          t.id === templateId
+            ? { ...t, items: t.items.map((i) => (i.id === itemId ? { ...i, ...patch } : i)) }
+            : t,
+        ),
+      },
+    }));
+  }, []);
+
+  const removeTemplateItem = useCallback((templateId: string, itemId: string) => {
+    setState((s) => ({
+      ...s,
+      settings: {
+        ...s.settings,
+        templates: s.settings.templates.map((t) =>
+          t.id === templateId ? { ...t, items: t.items.filter((i) => i.id !== itemId) } : t,
+        ),
+      },
+    }));
+  }, []);
+
+  const reorderTemplateItem = useCallback((templateId: string, itemId: string, dir: -1 | 1) => {
+    setState((s) => ({
+      ...s,
+      settings: {
+        ...s.settings,
+        templates: s.settings.templates.map((t) => {
+          if (t.id !== templateId) return t;
+          const idx = t.items.findIndex((i) => i.id === itemId);
+          if (idx < 0) return t;
+          const ni = idx + dir;
+          if (ni < 0 || ni >= t.items.length) return t;
+          const items = [...t.items];
+          const moved = items[idx];
+          if (!moved) return t;
+          items.splice(idx, 1);
+          items.splice(ni, 0, moved);
+          return { ...t, items };
+        }),
       },
     }));
   }, []);
@@ -497,13 +370,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }));
   }, []);
 
-  const removeTemplate = useCallback((id: string) => {
-    setState((s) => ({
-      ...s,
-      settings: { ...s.settings, templates: s.settings.templates.filter((t) => t.id !== id) },
-    }));
-  }, []);
-
   const reset = useCallback(() => setState(seedState()), []);
 
   const api = useMemo<StoreApi>(
@@ -512,24 +378,22 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       addClient,
       updateClient,
       deleteClient,
-      setAccessCheck,
-      setConnection,
-      setTask,
-      setStaffVerification,
-      addBlocker,
-      updateBlocker,
-      setGuide,
-      addCallSession,
-      updateCallSession,
+      startCall,
+      updateCall,
+      finishCall,
+      setCallItem,
+      setCallGuide,
       updateSettings,
       addGuide,
       updateGuide,
       removeGuide,
       addTeamMember,
       removeTeamMember,
-      addTemplate,
+      addTemplateItem,
+      updateTemplateItem,
+      removeTemplateItem,
+      reorderTemplateItem,
       updateTemplate,
-      removeTemplate,
       reset,
     }),
     [
@@ -537,24 +401,22 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       addClient,
       updateClient,
       deleteClient,
-      setAccessCheck,
-      setConnection,
-      setTask,
-      setStaffVerification,
-      addBlocker,
-      updateBlocker,
-      setGuide,
-      addCallSession,
-      updateCallSession,
+      startCall,
+      updateCall,
+      finishCall,
+      setCallItem,
+      setCallGuide,
       updateSettings,
       addGuide,
       updateGuide,
       removeGuide,
       addTeamMember,
       removeTeamMember,
-      addTemplate,
+      addTemplateItem,
+      updateTemplateItem,
+      removeTemplateItem,
+      reorderTemplateItem,
       updateTemplate,
-      removeTemplate,
       reset,
     ],
   );
@@ -572,10 +434,4 @@ export function useAppState(): AppState {
   return useStore().state;
 }
 
-export type {
-  ConnectionStatus,
-  TaskStatus,
-  StaffVerificationStatus,
-  ReviewOutcome,
-  GuideChannel,
-};
+export type { CallType, ItemStatus, GuideChannel, ReviewOutcome };

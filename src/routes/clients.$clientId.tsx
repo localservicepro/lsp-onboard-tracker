@@ -1,31 +1,20 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
-import { useStore } from "../lib/store";
+import { useStore, type NewClientInput } from "../lib/store";
 import {
-  derivedOverallStatus,
-  completionBlock,
-  accessProgress,
-  connectionProgress,
-  practiceProgress,
-  staffVerificationProgress,
-  followupProgress,
+  deriveClientStatus,
+  nextCallTypeForClient,
+  unfinishedCallOfType,
+  callItemProgress,
+  callCompletionBlock,
+  deriveCallStatus,
+  type CallType,
 } from "../lib/completion";
-import {
-  OVERALL_STATUSES,
-  type OverallStatus,
-  type Client,
-} from "../lib/types";
+import type { CallStatus } from "../lib/types";
+import { CALL_TYPES, CALL_TYPE_LABEL } from "../lib/types";
 import { StatusBadge } from "../components/status-badge";
-import { buildCallSummary, copyToClipboard } from "../lib/call-summary";
-import {
-  inputCls,
-  AuditTrail,
-  AccessSection,
-  ConnectionsSection,
-  PracticalSection,
-  StaffVerificationSection,
-} from "../components/client-sections";
-import { GuidesSection, BlockerSection } from "../components/guides-section";
+import { buildClientSummary, copyToClipboard } from "../lib/call-summary";
+import { inputCls } from "../components/client-sections";
 
 export const Route = createFileRoute("/clients/$clientId")({
   head: () => ({
@@ -41,26 +30,18 @@ export const Route = createFileRoute("/clients/$clientId")({
 
 export function ClientDetailPage() {
   const { clientId } = Route.useParams();
-  const {
-    state,
-    setAccessCheck,
-    setConnection,
-    setTask,
-    setStaffVerification,
-    addBlocker,
-    updateBlocker,
-    setGuide,
-    updateClient,
-    addCallSession,
-  } = useStore();
+  const { state, updateClient, startCall } = useStore();
+  const navigate = useNavigate();
   const client = state.clients.find((c) => c.id === clientId);
-  const [actor, setActor] = useState(state.settings.team[0]?.name ?? "Staff Member");
   const [copied, setCopied] = useState(false);
+  const [showEdit, setShowEdit] = useState(false);
+
+  const guides = state.settings.guides;
 
   if (!client) {
     return (
       <div className="space-y-4 rounded-2xl border border-border bg-card p-8 text-center">
-        <h2 className="text-xl font-bold">Client record not found</h2>
+        <h2 className="text-xl font-bold text-foreground">Client record not found</h2>
         <p className="text-sm text-muted-foreground">The requested client ID does not exist in this store.</p>
         <Link to="/" className="inline-flex rounded-xl bg-primary px-4 py-2 text-sm font-bold text-primary-foreground">
           Return to Dashboard
@@ -69,17 +50,22 @@ export function ClientDetailPage() {
     );
   }
 
-  const guides = state.settings.guides;
-  const acc = accessProgress(client);
-  const conn = connectionProgress(client);
-  const prac = practiceProgress(client);
-  const sv = staffVerificationProgress(client);
-  const fup = followupProgress(client, guides);
-  const block = completionBlock(client, guides);
-  const derived = derivedOverallStatus(client, guides);
+  const derived = deriveClientStatus(client, guides);
+  const nextType = nextCallTypeForClient(client);
+  const unfinished = unfinishedCallOfType(client, nextType);
+
+  const onStart = (type: CallType) => {
+    const existing = unfinishedCallOfType(client, type);
+    if (existing) {
+      navigate({ to: "/clients/$clientId/call/$callId", params: { clientId: client.id, callId: existing.id } });
+    } else {
+      const id = startCall(client.id, type, client.assignedTeamMember, new Date().toISOString().slice(0, 10));
+      navigate({ to: "/clients/$clientId/call/$callId", params: { clientId: client.id, callId: id } });
+    }
+  };
 
   const onCopy = async () => {
-    await copyToClipboard(buildCallSummary(client, guides));
+    await copyToClipboard(buildClientSummary(client, guides));
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
@@ -87,10 +73,10 @@ export function ClientDetailPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/80 pb-4">
+      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border/80 pb-4">
         <div>
           <Link to="/" className="inline-flex items-center gap-1.5 text-xs font-semibold text-accent hover:underline">
-            ← Back to Onboarding Dashboard
+            ← Back to Dashboard
           </Link>
           <div className="mt-2 flex flex-wrap items-center gap-3">
             <h1 className="font-display text-2xl sm:text-3xl font-extrabold tracking-tight text-foreground">
@@ -105,8 +91,7 @@ export function ClientDetailPage() {
           </div>
           <p className="text-xs sm:text-sm text-muted-foreground mt-0.5">
             Client: <span className="font-semibold text-foreground">{client.clientName}</span> · Assigned:{" "}
-            <span className="font-semibold text-foreground">{client.assignedTeamMember}</span> · Call:{" "}
-            <span className="font-mono">{client.callDate}</span>
+            <span className="font-semibold text-foreground">{client.assignedTeamMember}</span>
             {client.accountContext && <> · Account: <span className="font-semibold text-foreground">{client.accountContext}</span></>}
           </p>
           {client.isTestRecord && client.testPurpose && (
@@ -114,228 +99,154 @@ export function ClientDetailPage() {
           )}
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <div className="flex items-center gap-2 rounded-xl border border-border bg-card px-3 py-1.5">
-            <label className="text-xs font-semibold text-muted-foreground">Acting Staff:</label>
-            <select
-              value={actor}
-              onChange={(e) => setActor(e.target.value)}
-              className="bg-transparent text-xs font-bold text-foreground outline-hidden cursor-pointer"
-            >
-              {state.settings.team.map((t) => (
-                <option key={t.id} value={t.name} className="bg-card text-foreground">{t.name}</option>
-              ))}
-            </select>
-          </div>
           <button
-            onClick={onCopy}
+            onClick={() => onStart(nextType)}
             className="inline-flex items-center gap-1.5 rounded-xl bg-primary px-4 py-2 text-xs sm:text-sm font-bold text-primary-foreground shadow-md shadow-primary/20 hover:bg-primary/90 min-h-[40px] cursor-pointer"
           >
-            {copied ? "✓ Copied!" : "📋 Copy Call Summary"}
+            {unfinished ? "Continue Call" : "Start Call"} →
+          </button>
+          <button
+            onClick={onCopy}
+            className="inline-flex items-center gap-1.5 rounded-xl border border-border bg-card px-4 py-2 text-xs sm:text-sm font-bold text-foreground hover:bg-secondary min-h-[40px] cursor-pointer"
+          >
+            {copied ? "✓ Copied!" : "📋 Copy Summary"}
+          </button>
+          <button
+            onClick={() => setShowEdit((v) => !v)}
+            className="inline-flex items-center gap-1.5 rounded-xl border border-border bg-card px-4 py-2 text-xs sm:text-sm font-bold text-foreground hover:bg-secondary min-h-[40px] cursor-pointer"
+          >
+            {showEdit ? "Close" : "Edit Details"}
           </button>
         </div>
       </div>
 
-      {/* Completion Warning Banner */}
-      {!block.ok ? (
-        <div className="rounded-2xl border-2 border-destructive/50 bg-destructive/10 p-4 sm:p-5 text-sm">
-          <div className="flex items-center gap-2 font-bold text-destructive">
-            <span className="h-2 w-2 rounded-full bg-destructive animate-ping" />
-            Overall Onboarding Cannot Be Marked Completed ({block.reasons.length} issues remaining)
+      {/* Edit details */}
+      {showEdit && (
+        <section className="rounded-2xl border border-border bg-card p-5">
+          <h2 className="font-display text-base font-bold text-foreground mb-3">Client Record Information</h2>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 text-xs">
+            <Field label="Business Name">
+              <input className={inputCls} defaultValue={client.businessName} onBlur={(e) => updateClient(client.id, { businessName: e.target.value }, client.assignedTeamMember)} />
+            </Field>
+            <Field label="Client Name">
+              <input className={inputCls} defaultValue={client.clientName} onBlur={(e) => updateClient(client.id, { clientName: e.target.value }, client.assignedTeamMember)} />
+            </Field>
+            <Field label="Assigned Staff">
+              <select className={inputCls} defaultValue={client.assignedTeamMember} onChange={(e) => updateClient(client.id, { assignedTeamMember: e.target.value }, client.assignedTeamMember)}>
+                {state.settings.team.map((t) => <option key={t.id} value={t.name}>{t.name}</option>)}
+              </select>
+            </Field>
+            <Field label="GHL Subaccount Link (optional)">
+              <input className={inputCls} defaultValue={client.ghlLink ?? ""} placeholder="https://..." onBlur={(e) => updateClient(client.id, { ghlLink: e.target.value || undefined }, client.assignedTeamMember)} />
+            </Field>
+            <Field label="Contact Details (no passwords)">
+              <input className={inputCls} defaultValue={client.contactDetails ?? ""} onBlur={(e) => updateClient(client.id, { contactDetails: e.target.value || undefined }, client.assignedTeamMember)} />
+            </Field>
+            <Field label="Next Call Date">
+              <input type="date" className={inputCls} defaultValue={client.nextCallDate ?? ""} onChange={(e) => updateClient(client.id, { nextCallDate: e.target.value || undefined }, client.assignedTeamMember)} />
+            </Field>
+            <Field label="Next Call Type">
+              <select className={inputCls} value={client.nextCallType ?? nextType} onChange={(e) => updateClient(client.id, { nextCallType: e.target.value as CallType }, client.assignedTeamMember)}>
+                {CALL_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+              </select>
+            </Field>
+            <div className="sm:col-span-2 lg:col-span-3">
+              <Field label="Notes">
+                <textarea className={inputCls} rows={2} defaultValue={client.notes ?? ""} onBlur={(e) => updateClient(client.id, { notes: e.target.value || undefined }, client.assignedTeamMember)} />
+              </Field>
+            </div>
           </div>
-          <ul className="mt-2 list-disc space-y-1 pl-5 text-xs text-destructive/90">
-            {block.reasons.map((r, i) => (
-              <li key={i}>{r}</li>
-            ))}
-          </ul>
-        </div>
-      ) : (
-        <div className="rounded-2xl border-2 border-chart-1/50 bg-chart-1/10 p-4 text-sm font-bold text-chart-1 flex items-center gap-2">
-          <span>✓</span>
-          <span>All completion criteria verified: access confirmed, required connections satisfied, client practical tasks demonstrated with evidence, staff check confirmed, zero unresolved blockers and required documentation complete.</span>
-        </div>
+        </section>
       )}
 
-      {/* Progress Cards */}
-      <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-        <ProgressCard title="Phone-App Access" done={acc.done} total={acc.total} />
-        <ProgressCard title="Connections" done={conn.done} total={conn.total} exempt={conn.exemptCount ?? 0} />
-        <ProgressCard title="Client Practical Skills" done={prac.done} total={prac.total} exempt={prac.exemptCount ?? 0} />
-        <ProgressCard title="Staff Verification" done={sv.done} total={sv.total} exempt={sv.exemptCount ?? 0} />
-        <ProgressCard title="Follow-up / Docs" done={fup.done} total={fup.total} exempt={fup.exemptCount ?? 0} />
-      </section>
-
-      {/* Record Info Form */}
+      {/* Call history */}
       <section className="rounded-2xl border border-border bg-card p-5">
-        <div className="flex items-center justify-between mb-3 border-b border-border/60 pb-2">
-          <h2 className="font-display text-base font-bold text-foreground">Client Record Information</h2>
-          <span className="text-xs text-muted-foreground font-mono">ID: {client.id}</span>
-        </div>
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 text-xs">
-          <Field label="Business Name">
-            <input className={inputCls} defaultValue={client.businessName} onBlur={(e) => updateClient(client.id, { businessName: e.target.value }, actor)} />
-          </Field>
-          <Field label="Client Full Name">
-            <input className={inputCls} defaultValue={client.clientName} onBlur={(e) => updateClient(client.id, { clientName: e.target.value }, actor)} />
-          </Field>
-          <Field label="GHL Location ID (optional)">
-            <input className={inputCls} defaultValue={client.ghlLocationId ?? ""} placeholder="e.g. loc_123" onBlur={(e) => updateClient(client.id, { ghlLocationId: e.target.value || undefined }, actor)} />
-          </Field>
-          <Field label="GHL Link (optional)">
-            <input className={inputCls} defaultValue={client.ghlLink ?? ""} placeholder="https://..." onBlur={(e) => updateClient(client.id, { ghlLink: e.target.value || undefined }, actor)} />
-          </Field>
-          <Field label="Assigned Team Member">
-            <select className={inputCls} defaultValue={client.assignedTeamMember} onChange={(e) => updateClient(client.id, { assignedTeamMember: e.target.value }, actor)}>
-              {state.settings.team.map((t) => <option key={t.id} value={t.name}>{t.name}</option>)}
-            </select>
-          </Field>
-          <Field label="Call Date">
-            <input type="date" className={inputCls} defaultValue={client.callDate} onChange={(e) => updateClient(client.id, { callDate: e.target.value }, actor)} />
-          </Field>
-          <Field label="Plan / Inclusions (entered manually, not inferred)">
-            <input className={inputCls} defaultValue={client.plan} onBlur={(e) => updateClient(client.id, { plan: e.target.value }, actor)} />
-          </Field>
-          <Field label="Next Call / Follow-up Date">
-            <input type="date" className={inputCls} defaultValue={client.nextCallDate ?? ""} onChange={(e) => updateClient(client.id, { nextCallDate: e.target.value || undefined }, actor)} />
-          </Field>
-          <Field label="Manual Override Status">
-            <select className={inputCls} value={client.overallStatus} onChange={(e) => updateClient(client.id, { overallStatus: e.target.value as OverallStatus }, actor, "Manual status select")}>
-              {OVERALL_STATUSES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
-            </select>
-          </Field>
-          <div className="sm:col-span-2 lg:col-span-3">
-            <Field label="Notes / Client Context">
-              <textarea className={inputCls} rows={2} defaultValue={client.notes ?? ""} onBlur={(e) => updateClient(client.id, { notes: e.target.value || undefined }, actor)} />
-            </Field>
-          </div>
-        </div>
-      </section>
-
-      {/* Sections A, B, C, D */}
-      <AccessSection client={client} actor={actor} onCheck={(id, patch, reason) => setAccessCheck(client.id, id, patch, actor, reason)} />
-      <ConnectionsSection client={client} actor={actor} onSetConnection={(id, patch, reason) => setConnection(client.id, id, patch, actor, reason)} />
-      <PracticalSection client={client} actor={actor} onSetTask={(id, patch, reason) => setTask(client.id, id, patch, actor, reason)} />
-      <StaffVerificationSection client={client} actor={actor} onSetVerification={(patch, reason) => setStaffVerification(client.id, patch, actor, reason)} />
-
-      {/* Section E: Guides */}
-      <GuidesSection
-        client={client}
-        actor={actor}
-        guides={state.settings.guides}
-        onSetGuide={(guideId, patch, reason) => setGuide(client.id, guideId, patch, actor, reason)}
-      />
-
-      {/* Section F: Blockers */}
-      <section className="rounded-2xl border border-border bg-card p-5">
-        <h2 className="font-display text-lg font-bold text-foreground">Blockers &amp; Outstanding Issues</h2>
-        <p className="text-xs text-muted-foreground mb-3">
-          Any unresolved blocker prevents overall completion. Assign each blocker an owner, next action and follow-up due date.
-        </p>
-
-        <BlockerSection
-          client={client}
-          actor={actor}
-          onAdd={(input) => addBlocker(client.id, input, actor)}
-          onUpdate={(id, patch, reason) => updateBlocker(client.id, id, patch, actor, reason)}
-        />
-      </section>
-
-      {/* Section G: Call History */}
-      <section className="rounded-2xl border border-border bg-card p-5">
-        <div className="flex items-center justify-between mb-2">
+        <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
           <div>
-            <h2 className="font-display text-lg font-bold text-foreground">Call Session History</h2>
+            <h2 className="font-display text-lg font-bold text-foreground">Call History</h2>
             <p className="text-xs text-muted-foreground">Multiple call sessions are preserved without erasing previous results.</p>
           </div>
-          <button
-            onClick={() =>
-              addCallSession(
-                client.id,
-                {
-                  date: new Date().toISOString().slice(0, 10),
-                  staffMember: actor,
-                  notes: "Follow-up onboarding call session",
-                },
-                actor,
-              )
-            }
-            className="rounded-xl bg-primary px-3.5 py-2 text-xs font-bold text-primary-foreground hover:bg-primary/90 shadow-md shadow-primary/20 cursor-pointer"
-          >
-            + Log New Call Session
-          </button>
+          <div className="flex flex-wrap gap-2">
+            {CALL_TYPES.map((t) => (
+              <button
+                key={t.value}
+                onClick={() => onStart(t.value)}
+                className="rounded-xl border border-border bg-background px-3 py-1.5 text-xs font-bold text-foreground hover:bg-secondary cursor-pointer min-h-[36px]"
+              >
+                + {t.label}
+              </button>
+            ))}
+          </div>
         </div>
 
-        <div className="mt-3 space-y-3">
-          {client.callSessions.length === 0 && (
+        <div className="space-y-3">
+          {client.calls.length === 0 && (
             <div className="rounded-xl border border-dashed border-border p-4 text-center text-xs text-muted-foreground">
-              No call sessions logged yet.
+              No calls logged yet. Start a call above.
             </div>
           )}
-          {[...client.callSessions].sort((a, b) => b.date.localeCompare(a.date)).map((s) => (
-            <div key={s.id} className="rounded-xl border border-border bg-background p-4 text-sm flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <div className="font-bold text-foreground flex items-center gap-2">
-                  <span>Call Date: {s.date}</span>
-                  <span className="rounded bg-secondary px-2 py-0.5 text-xs text-muted-foreground font-mono">{s.staffMember}</span>
+          {[...client.calls]
+            .sort((a, b) => b.date.localeCompare(a.date))
+            .map((c) => {
+              const cs = deriveCallStatus(c, guides);
+              const prog = callItemProgress(c);
+              const block = callCompletionBlock(c, guides);
+              return (
+                <div key={c.id} className="rounded-xl border border-border bg-background p-4 text-sm">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <div className="font-bold text-foreground flex flex-wrap items-center gap-2">
+                        <span className="rounded-md bg-secondary/60 px-2 py-0.5 text-xs text-secondary-foreground">{CALL_TYPE_LABEL[c.type]}</span>
+                        <span>{c.date}</span>
+                        <span className="text-xs font-normal text-muted-foreground">· {c.staffMember}</span>
+                        {c.finishedAt && <span className="rounded bg-chart-1/20 px-1.5 py-0.5 text-[10px] font-bold text-chart-1">Finished</span>}
+                      </div>
+                      {c.notes && <div className="text-xs text-muted-foreground mt-1">{c.notes}</div>}
+                      <div className="mt-1.5 flex items-center gap-2 text-xs text-muted-foreground">
+                        <span className="font-mono">{prog.done}/{prog.total} items</span>
+                        {prog.needsHelpCount ? <span className="text-destructive font-semibold">· {prog.needsHelpCount} need help</span> : null}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <StatusBadge status={cs as CallStatus} />
+                      <Link
+                        to="/clients/$clientId/call/$callId"
+                        params={{ clientId: client.id, callId: c.id }}
+                        className="inline-flex items-center gap-1.5 rounded-xl border border-accent/40 bg-accent/10 px-3.5 py-2 text-xs font-bold text-accent hover:bg-accent/20 transition-colors"
+                      >
+                        {c.finishedAt ? "Review Call" : "Open Call"} →
+                      </Link>
+                    </div>
+                  </div>
+                  {!block.ok && c.finishedAt && (
+                    <div className="mt-2 rounded-lg border border-destructive/40 bg-destructive/5 px-3 py-2 text-xs text-destructive">
+                      {block.reasons.join(" · ")}
+                    </div>
+                  )}
                 </div>
-                {s.notes && <div className="text-xs text-muted-foreground mt-1">{s.notes}</div>}
-              </div>
-              <Link
-                to="/clients/$clientId/call/$callId"
-                params={{ clientId: client.id, callId: s.id }}
-                className="inline-flex items-center gap-1.5 rounded-xl border border-accent/40 bg-accent/10 px-3.5 py-2 text-xs font-bold text-accent hover:bg-accent/20 transition-colors"
-              >
-                <span>Open Live-Call Checklist</span>
-                <span>→</span>
-              </Link>
-            </div>
-          ))}
+              );
+            })}
         </div>
       </section>
 
-      {/* Section H: Copyable Call Summary */}
+      {/* Copyable summary */}
       <section className="rounded-2xl border border-border bg-card p-5">
         <div className="flex items-center justify-between mb-2">
           <div>
-            <h2 className="font-display text-lg font-bold text-foreground">Copyable Call-Summary Draft</h2>
-            <p className="text-xs text-muted-foreground">Accurately reflects completed items, staff demos, exemptions, staff verification and blockers. Copying does not send anything.</p>
+            <h2 className="font-display text-lg font-bold text-foreground">Client Summary</h2>
+            <p className="text-xs text-muted-foreground">Readable guide names. Copying does not send anything.</p>
           </div>
           <button
             onClick={onCopy}
             className="rounded-xl bg-primary px-4 py-2 text-xs font-bold text-primary-foreground hover:bg-primary/90 cursor-pointer min-h-[40px]"
           >
-            {copied ? "✓ Copied!" : "📋 Copy Summary"}
+            {copied ? "✓ Copied!" : "📋 Copy"}
           </button>
         </div>
         <pre className="mt-3 max-h-80 overflow-auto whitespace-pre-wrap rounded-xl border border-border/80 bg-background/80 p-4 font-mono text-xs text-foreground">
-          {buildCallSummary(client, state.settings.guides)}
+          {buildClientSummary(client, state.settings.guides)}
         </pre>
       </section>
-
-      {/* Section I: Audit Trail */}
-      <section className="rounded-2xl border border-border bg-card p-5">
-        <h2 className="font-display text-base font-bold text-foreground mb-1">Client Overall Audit Trail</h2>
-        <p className="text-xs text-muted-foreground mb-3">Immutable record of status and record modifications.</p>
-        <AuditTrail entries={client.audit} />
-      </section>
-    </div>
-  );
-}
-
-function ProgressCard({ title, done, total, exempt }: { title: string; done: number; total: number; exempt?: number }) {
-  const pct = total === 0 ? (exempt && exempt > 0 ? 100 : 0) : Math.round((done / total) * 100);
-  return (
-    <div className="rounded-2xl border border-border bg-card p-4 shadow-sm">
-      <div className="text-xs font-bold uppercase tracking-wider text-muted-foreground">{title}</div>
-      <div className="mt-2 flex items-baseline justify-between">
-        <span className="font-display text-2xl font-extrabold text-foreground">{pct}%</span>
-        <span className="text-xs font-mono text-muted-foreground">
-          {done}/{total}
-          {exempt && exempt > 0 ? ` (${exempt} N/A)` : ""}
-        </span>
-      </div>
-      <div className="mt-2.5 h-1.5 overflow-hidden rounded-full bg-secondary">
-        <div className="h-full rounded-full bg-primary" style={{ width: `${pct}%` }} />
-      </div>
     </div>
   );
 }

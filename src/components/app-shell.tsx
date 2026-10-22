@@ -1,7 +1,7 @@
 import { Link, useRouterState, Outlet } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 import { useStore } from "../lib/store";
-import { derivedOverallStatus } from "../lib/completion";
+import { deriveClientStatus } from "../lib/completion";
 import { StatusBadge } from "./status-badge";
 
 interface NavItem {
@@ -20,7 +20,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const { state } = useStore();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const guides = state.settings.guides;
-  const blockedCount = state.clients.filter((c) => derivedOverallStatus(c, guides) === "blocked").length;
+  const needsFollowUpCount = state.clients.filter((c) => deriveClientStatus(c, guides) === "needs_followup").length;
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -45,13 +45,13 @@ export function AppShell({ children }: { children: ReactNode }) {
                     "inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors " +
                     (active
                       ? "bg-secondary text-secondary-foreground"
-                      : "text-muted-foreground hover:bg-accent hover:text-accent-foreground")
+                      : "text-muted-foreground hover:bg-accent/20 hover:text-accent")
                   }
                 >
                   {item.label}
-                  {item.to === "/follow-up" && blockedCount > 0 && (
+                  {item.to === "/follow-up" && needsFollowUpCount > 0 && (
                     <span className="grid h-5 min-w-5 place-items-center rounded-full bg-destructive px-1 text-xs font-semibold text-destructive-foreground">
-                      {blockedCount}
+                      {needsFollowUpCount}
                     </span>
                   )}
                 </Link>
@@ -65,8 +65,9 @@ export function AppShell({ children }: { children: ReactNode }) {
         <div className="rounded-lg border border-dashed border-border bg-card/50 p-3 text-xs text-muted-foreground">
           <strong className="font-medium text-foreground">Prototype notice:</strong> this tool uses
           synthetic demo data held in browser memory. It is not connected to live client records, and
-          browser storage is not a secure shared store. Do not enter real client PII or credentials.
-          Enable Cloud for real staff accounts and persisted records.
+          browser memory is not a secure shared store — records may be lost on reload and are not
+          available in another browser. Do not enter real client PII or credentials. Secure staff
+          authentication and shared persistent storage are required before real client use.
         </div>
       </footer>
     </div>

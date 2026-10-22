@@ -1,13 +1,13 @@
-import type { Client, GuideLink } from "./types";
+import type { Client, Call, GuideLink } from "./types";
 import {
-  isAccessDone,
-  isConnectionSatisfied,
-  isConnectionExempt,
-  isTaskSatisfied,
-  taskCompletionProofValid,
-  isStaffVerificationDone,
-  unresolvedBlockers,
-  derivedOverallStatus,
+  isItemDone,
+  isItemSatisfied,
+  isItemExempt,
+  itemNeedsFollowUp,
+  itemStatusLabel,
+  callCompletionBlock,
+  deriveCallStatus,
+  deriveClientStatus,
   isGuideSentValid,
   isGuideExempt,
   isGuideOutstanding,
@@ -15,186 +15,245 @@ import {
   guideHasUrl,
 } from "./completion";
 
-// Build a copyable call-summary draft.
-// This is a RECORD only — it is never sent automatically. The caller copies it manually.
-export function buildCallSummary(client: Client, guides: GuideLink[] = []): string {
-  const completedByClient = client.tasks.filter((t) => taskCompletionProofValid(t));
-  const demonstratedOnly = client.tasks.filter((t) => t.status === "demonstrated_by_staff");
-  const exemptedTasks = client.tasks.filter((t) => t.status === "not_applicable" && t.acknowledgedByReviewer);
+// Build a short, readable call summary. RECORD only — copying never sends anything.
+export function buildCallSummary(client: Client, call: Call, guides: GuideLink[] = []): string {
+  const callStatus = deriveCallStatus(call, guides);
+  const clientStatus = deriveClientStatus(client, guides);
+  const block = callCompletionBlock(call, guides);
 
-  const verifiedConnections = client.connections.filter((c) => c.status === "connected" && isConnectionSatisfied(c));
-  const exemptedConnections = client.connections.filter(isConnectionExempt);
-  const blockedConnections = client.connections.filter((c) => c.status === "blocked");
-  const uncheckedConnections = client.connections.filter((c) => c.status === "not_checked");
+  const completed = call.items.filter((i) => i.status === "done" && isItemDone(i));
+  const needsHelp = call.items.filter(itemNeedsFollowUp);
+  const exempt = call.items.filter(isItemExempt);
+  const notChecked = call.items.filter((i) => i.status === "not_checked");
 
-  const accessCompleted = client.accessChecks.filter(isAccessDone);
-  const blockers = unresolvedBlockers(client);
-
-  // Guides: sent (valid), verbal walkthroughs (separate), outstanding, exempted
-  const guidesSent = client.guides.filter((g) => isGuideSentValid(g, guides));
-  const walkthroughs = client.guides.filter((g) => g.walkthroughProvided);
-  const outstandingGuides = client.guides.filter((g) => isGuideOutstanding(g, guides));
-  const exemptedGuides = client.guides.filter((g) => isGuideExempt(g));
-
-  const overall = derivedOverallStatus(client, guides);
+  const guidesSent = call.guides.filter((g) => isGuideSentValid(g, guides));
+  const walkthroughs = call.guides.filter((g) => g.walkthroughProvided);
+  const outstandingGuides = call.guides.filter((g) => isGuideOutstanding(g, guides));
+  const exemptGuides = call.guides.filter((g) => isGuideExempt(g));
 
   const lines: string[] = [];
   lines.push("==================================================");
-  lines.push("LSP ONBOARDING CALL SUMMARY — STAFF RECORD ONLY");
+  lines.push("LSP ONBOARDING — CALL SUMMARY (STAFF RECORD ONLY)");
   lines.push("==================================================");
   lines.push(`Business: ${client.businessName}`);
   lines.push(`Client: ${client.clientName}`);
   lines.push(`Assigned Staff: ${client.assignedTeamMember}`);
-  lines.push(`Call Date: ${client.callDate}`);
-  lines.push(`Plan/Inclusions: ${client.plan || "(not entered)"}`);
+  lines.push(`Call Type: ${call.type === "connection" ? "Integration & Connection" : "Onboarding & Training"}`);
+  lines.push(`Call Date: ${call.date}`);
+  lines.push(`Observing Staff: ${call.staffMember}`);
   if (client.accountContext) lines.push(`Account Context: ${client.accountContext}`);
-  if (client.nextCallDate) lines.push(`Next Call / Follow-up Date: ${client.nextCallDate}`);
-  lines.push(`Overall Status: ${overall.toUpperCase()}`);
-  if (client.isTestRecord) lines.push(`NOTE: Internal test record — not a completed onboarding example.`);
+  lines.push(`This Call Status: ${callStatus.toUpperCase().replace("_", " ")}`);
+  lines.push(`Client Overall Status: ${clientStatus.toUpperCase().replace("_", " ")}`);
+  if (client.isTestRecord) lines.push("NOTE: Internal test record — not a completed onboarding example.");
   lines.push("");
 
-  // 1. ACCESS CHECKS
-  lines.push(`1. PHONE-APP ACCESS CHECKS (${accessCompleted.length}/${client.accessChecks.length}):`);
-  client.accessChecks.forEach((a) => {
-    const mark = isAccessDone(a) ? "[VERIFIED]" : "[PENDING]";
-    const by = a.verifier ? ` (verifier: ${a.verifier})` : "";
-    const note = a.resultNote ? ` — ${a.resultNote}` : "";
-    lines.push(`   ${mark} ${a.label}${by}${note}`);
-  });
-  lines.push("");
-
-  // 2. CONNECTIONS VERIFIED
-  lines.push(`2. CONNECTIONS VERIFIED (${verifiedConnections.length} connected, ${exemptedConnections.length} exempted):`);
-  if (verifiedConnections.length === 0) {
-    lines.push("   - None connected yet");
+  // What was completed
+  lines.push(`COMPLETED (${completed.length}):`);
+  if (completed.length === 0) {
+    lines.push("  - None completed this call");
   } else {
-    verifiedConnections.forEach((c) => {
-      const by = c.verifier ? ` — verifier: ${c.verifier}` : "";
-      const req = c.required ? " (Required)" : " (Optional)";
-      lines.push(`   - [CONNECTED] ${c.label}${req}${by}`);
+    completed.forEach((i) => {
+      const ev = i.evidence ? ` — "${i.evidence}"` : "";
+      const ro = i.reviewOutcome ? ` [review: ${i.reviewOutcome}]` : "";
+      lines.push(`  - [${i.kind === "client_action" ? "CLIENT DID IT" : "DONE"}] ${i.label}${ro}${ev}`);
     });
-  }
-  if (exemptedConnections.length > 0) {
-    lines.push("   Approved Exemptions (N/A):");
-    exemptedConnections.forEach((c) => {
-      lines.push(`   - [N/A EXEMPT] ${c.label} (Reason: ${c.notApplicableReason ?? "None"}; Acknowledged: Yes)`);
-    });
-  }
-  if (blockedConnections.length > 0) {
-    lines.push("   Blocked Connections:");
-    blockedConnections.forEach((c) => lines.push(`   - [BLOCKED] ${c.label}`));
-  }
-  if (uncheckedConnections.length > 0) {
-    lines.push("   Unchecked Connections:");
-    uncheckedConnections.forEach((c) => lines.push(`   - [NOT CHECKED] ${c.label}${c.required ? " *REQUIRED*" : ""}`));
   }
   lines.push("");
 
-  // 3. CLIENT-LED PRACTICE
-  lines.push(`3. CLIENT-LED PRACTICAL TASKS (${completedByClient.length}/${client.tasks.length} completed by client):`);
-  if (completedByClient.length === 0) {
-    lines.push("   - None completed by client yet");
+  // What needs help
+  lines.push(`NEEDS HELP (${needsHelp.length}):`);
+  if (needsHelp.length === 0) {
+    lines.push("  - None");
   } else {
-    completedByClient.forEach((t) => {
-      const review = t.reviewOutcome ? ` [Review outcome: ${t.reviewOutcome}]` : "";
-      const evidence = t.evidence ? ` (Evidence: "${t.evidence}")` : "";
-      lines.push(`   - [CLIENT COMPLETED] ${t.label}${review}${evidence}`);
+    needsHelp.forEach((i) => {
+      lines.push(`  - ${i.label}: ${i.issue?.trim() || "issue recorded"}`);
+      if (i.nextAction) lines.push(`      Next action: ${i.nextAction}`);
     });
   }
-  if (demonstratedOnly.length > 0) {
+  lines.push("");
+
+  // Owner & next action (call-level follow-up)
+  if (call.followUpAction || call.followUpDate) {
+    lines.push("FOLLOW-UP:");
+    if (call.followUpAction) lines.push(`  - Action: ${call.followUpAction}`);
+    if (call.followUpDate) lines.push(`  - Due: ${call.followUpDate}`);
+    lines.push(`  - Owner: ${client.assignedTeamMember}`);
     lines.push("");
-    lines.push(`   ⚠️ Tasks Demonstrated by Staff Only (${demonstratedOnly.length}):`);
-    lines.push("   (NOTE: Staff demonstration does NOT count as client completion)");
-    demonstratedOnly.forEach((t) => lines.push(`   - [STAFF DEMO ONLY] ${t.label}`));
   }
-  if (exemptedTasks.length > 0) {
+
+  // Next call date
+  if (client.nextCallDate) {
+    const t = client.nextCallType === "connection" ? "Integration & Connection" : client.nextCallType === "onboarding" ? "Onboarding & Training" : "Next call";
+    lines.push(`NEXT CALL: ${t} on ${client.nextCallDate}`);
     lines.push("");
-    lines.push(`   Approved Practical Exemptions (${exemptedTasks.length}):`);
-    exemptedTasks.forEach((t) => lines.push(`   - [N/A EXEMPT] ${t.label} (Reason: ${t.notApplicableReason})`));
   }
-  lines.push("");
 
-  // 4. STAFF VERIFICATION
-  lines.push("4. STAFF VERIFICATION:");
-  const sv = client.staffVerification;
-  if (isStaffVerificationDone(sv)) {
-    const outcome = sv.reviewOutcome ? ` [Review outcome: ${sv.reviewOutcome}]` : "";
-    lines.push(`   [VERIFIED] ${sv.label} — verifier: ${sv.verifier ?? "Staff"}${outcome}`);
-    if (sv.resultNote) lines.push(`   Result note: ${sv.resultNote}`);
-  } else if (sv.status === "blocked") {
-    lines.push(`   [BLOCKED] ${sv.label} — Result verification blocked`);
-  } else {
-    lines.push(`   [PENDING] ${sv.label} — Not yet verified by staff`);
-  }
-  lines.push("");
-
-  // 5. BLOCKERS
-  lines.push(`5. OPEN BLOCKERS (${blockers.length}):`);
-  if (blockers.length === 0) {
-    lines.push("   - None open");
-  } else {
-    blockers.forEach((b) => {
-      lines.push(`   - [BLOCKER] ${b.summary}`);
-      lines.push(`     Owner: ${b.owner} | Next action: ${b.nextAction}${b.dueDate ? ` | Due: ${b.dueDate}` : ""}`);
-    });
-  }
-  lines.push("");
-
-  // 6. GUIDES SENT (valid)
-  lines.push(`6. HOW-TO GUIDES RECORDED AS SENT (${guidesSent.length}):`);
+  // Guides actually sent
+  lines.push(`GUIDES SENT (${guidesSent.length}):`);
   if (guidesSent.length === 0) {
-    lines.push("   - None sent (with valid supplied URL/version)");
+    lines.push("  - None sent (with valid supplied link)");
   } else {
     guidesSent.forEach((g) => {
       const name = guideLabel(g, guides);
-      const channel = g.channel ? ` via ${g.channel}` : "";
+      const ch = g.channel ? ` via ${g.channel}` : "";
       const by = g.sentBy ? ` by ${g.sentBy}` : "";
       const date = g.sentAt ? ` on ${g.sentAt.slice(0, 10)}` : "";
-      const urlInfo = g.suppliedUrlOrVersion ? ` [Link: ${g.suppliedUrlOrVersion}]` : "";
-      lines.push(`   - ${name}${channel}${by}${date}${urlInfo}`);
+      lines.push(`  - ${name}${ch}${by}${date}`);
     });
   }
   lines.push("");
 
-  // 7. VERBAL WALKTHROUGHS (separate — never counts as a guide sent)
-  lines.push(`7. VERBAL WALKTHROUGHS PROVIDED (${walkthroughs.length}):`);
-  if (walkthroughs.length === 0) {
-    lines.push("   - None recorded");
-  } else {
+  // Verbal walkthroughs (separate — never counts as sent)
+  if (walkthroughs.length > 0) {
+    lines.push(`VERBAL WALKTHROUGHS (${walkthroughs.length}) — NOT sent guides:`);
     walkthroughs.forEach((g) => {
       const name = guideLabel(g, guides);
       const by = g.walkthroughBy ? ` by ${g.walkthroughBy}` : "";
       const date = g.walkthroughAt ? ` on ${g.walkthroughAt.slice(0, 10)}` : "";
-      const note = g.walkthroughNotes ? ` — ${g.walkthroughNotes}` : "";
-      lines.push(`   - ${name}${by}${date}${note} (verbal walkthrough — NOT a sent guide)`);
+      lines.push(`  - ${name}${by}${date}`);
     });
+    lines.push("");
   }
-  lines.push("");
 
-  // 8. REQUIRED GUIDES STILL OUTSTANDING
-  lines.push(`8. REQUIRED GUIDES STILL OUTSTANDING (${outstandingGuides.length}):`);
-  if (outstandingGuides.length === 0) {
-    lines.push("   - None outstanding");
-  } else {
+  // Required guides still outstanding
+  if (outstandingGuides.length > 0) {
+    lines.push(`GUIDES STILL OUTSTANDING (${outstandingGuides.length}):`);
     outstandingGuides.forEach((g) => {
-      const name = guideLabel(g, guides);
       const missing = guideHasUrl(g, guides) ? "" : " [Guide link not added]";
-      lines.push(`   - ${name}${missing}`);
+      lines.push(`  - ${guideLabel(g, guides)}${missing}`);
     });
+    lines.push("");
   }
-  lines.push("");
 
-  // 9. APPROVED EXEMPTIONS (guides)
-  lines.push(`9. APPROVED GUIDE EXEMPTIONS (${exemptedGuides.length}):`);
-  if (exemptedGuides.length === 0) {
-    lines.push("   - None");
+  // Approved exemptions
+  const allExempt = [...exempt.map((i) => ({ name: i.label, reason: i.notApplicableReason })), ...exemptGuides.map((g) => ({ name: guideLabel(g, guides), reason: g.notApplicableReason }))];
+  if (allExempt.length > 0) {
+    lines.push(`APPROVED EXEMPTIONS (${allExempt.length}):`);
+    allExempt.forEach((e) => lines.push(`  - ${e.name} (Reason: ${e.reason})`));
+    lines.push("");
+  }
+
+  if (notChecked.length > 0) {
+    lines.push(`NOT YET CHECKED (${notChecked.length}): ${notChecked.map((i) => i.label).join("; ")}`);
+    lines.push("");
+  }
+
+  if (!block.ok) {
+    lines.push(`CALL NOT COMPLETE — ${block.reasons.join("; ")}`);
   } else {
-    exemptedGuides.forEach((g) => {
-      lines.push(`   - [N/A EXEMPT] ${guideLabel(g, guides)} (Reason: ${g.notApplicableReason})`);
-    });
+    lines.push("CALL COMPLETE — all required items satisfied, no unresolved issues.");
   }
   lines.push("==================================================");
 
+  return lines.join("\n");
+}
+
+// Client-level summary across all calls (for the client detail page).
+export function buildClientSummary(client: Client, guides: GuideLink[] = []): string {
+  const status = deriveClientStatus(client, guides);
+  const lines: string[] = [];
+  lines.push("==================================================");
+  lines.push("LSP ONBOARDING — CLIENT SUMMARY (STAFF RECORD ONLY)");
+  lines.push("==================================================");
+  lines.push(`Business: ${client.businessName}`);
+  lines.push(`Client: ${client.clientName}`);
+  lines.push(`Assigned Staff: ${client.assignedTeamMember}`);
+  if (client.accountContext) lines.push(`Account Context: ${client.accountContext}`);
+  lines.push(`Overall Status: ${status.toUpperCase().replace("_", " ")}`);
+  if (client.isTestRecord) lines.push("NOTE: Internal test record — not a completed onboarding example.");
+  lines.push("");
+
+  // Calls
+  lines.push(`CALLS (${client.calls.length}):`);
+  if (client.calls.length === 0) {
+    lines.push("  - No calls logged yet");
+  } else {
+    [...client.calls]
+      .sort((a, b) => b.date.localeCompare(a.date))
+      .forEach((c) => {
+        const cs = deriveCallStatus(c, guides);
+        const block = callCompletionBlock(c, guides);
+        lines.push(`  - ${c.type === "connection" ? "Integration & Connection" : "Onboarding & Training"} on ${c.date} (${cs.replace("_", " ")}) — ${block.ok ? "complete" : `${block.reasons.length} issue(s)`}`);
+      });
+  }
+  lines.push("");
+
+  // Aggregated guides actually sent across all calls
+  const sentGuides = new Map<string, { name: string; channel?: string | undefined; sentBy?: string | undefined; sentAt?: string | undefined }>();
+  const walkthroughs: { name: string; by?: string | undefined; at?: string | undefined }[] = [];
+  const outstandingGuides: string[] = [];
+  for (const c of client.calls) {
+    for (const g of c.guides) {
+      const name = guideLabel(g, guides);
+      if (isGuideSentValid(g, guides)) {
+        if (!sentGuides.has(g.guideId)) {
+          sentGuides.set(g.guideId, { name, channel: g.channel, sentBy: g.sentBy, sentAt: g.sentAt });
+        }
+      }
+      if (g.walkthroughProvided) walkthroughs.push({ name, by: g.walkthroughBy, at: g.walkthroughAt });
+      if (isGuideOutstanding(g, guides)) outstandingGuides.push(name + (guideHasUrl(g, guides) ? "" : " [Guide link not added]"));
+    }
+  }
+
+  lines.push(`GUIDES SENT (${sentGuides.size}):`);
+  if (sentGuides.size === 0) lines.push("  - None sent (with valid supplied link)");
+  else
+    for (const g of sentGuides.values()) {
+      const ch = g.channel ? ` via ${g.channel}` : "";
+      const by = g.sentBy ? ` by ${g.sentBy}` : "";
+      const dt = g.sentAt ? ` on ${g.sentAt.slice(0, 10)}` : "";
+      lines.push(`  - ${g.name}${ch}${by}${dt}`);
+    }
+  lines.push("");
+
+  if (walkthroughs.length > 0) {
+    lines.push(`VERBAL WALKTHROUGHS (${walkthroughs.length}) — NOT sent guides:`);
+    walkthroughs.forEach((w) => {
+      const by = w.by ? ` by ${w.by}` : "";
+      const dt = w.at ? ` on ${w.at.slice(0, 10)}` : "";
+      lines.push(`  - ${w.name}${by}${dt}`);
+    });
+    lines.push("");
+  }
+
+  if (outstandingGuides.length > 0) {
+    lines.push(`GUIDES STILL OUTSTANDING (${outstandingGuides.length}):`);
+    outstandingGuides.forEach((g) => lines.push(`  - ${g}`));
+    lines.push("");
+  }
+
+  // Open follow-up actions across all calls
+  const openActions: { call: string; owner: string; summary: string; next?: string | undefined; due?: string | undefined }[] = [];
+  for (const c of client.calls) {
+    for (const it of c.items) {
+      if (itemNeedsFollowUp(it)) {
+        openActions.push({
+          call: c.type === "connection" ? "Connection" : "Onboarding",
+          owner: it.completedBy?.trim() || client.assignedTeamMember,
+          summary: `${it.label}: ${it.issue?.trim() || "needs help"}`,
+          next: it.nextAction,
+        });
+      }
+    }
+    if (c.followUpAction) {
+      openActions.push({ call: c.type === "connection" ? "Connection" : "Onboarding", owner: client.assignedTeamMember, summary: c.followUpAction, due: c.followUpDate });
+    }
+  }
+  if (openActions.length > 0) {
+    lines.push(`OPEN FOLLOW-UP ACTIONS (${openActions.length}):`);
+    openActions.forEach((a) => {
+      lines.push(`  - [${a.call}] ${a.summary} (Owner: ${a.owner}${a.next ? `; Next: ${a.next}` : ""}${a.due ? `; Due: ${a.due}` : ""})`);
+    });
+    lines.push("");
+  }
+
+  if (client.nextCallDate) {
+    const t = client.nextCallType === "connection" ? "Integration & Connection" : client.nextCallType === "onboarding" ? "Onboarding & Training" : "Next call";
+    lines.push(`NEXT CALL: ${t} on ${client.nextCallDate}`);
+    lines.push("");
+  }
+
+  lines.push("==================================================");
   return lines.join("\n");
 }
 

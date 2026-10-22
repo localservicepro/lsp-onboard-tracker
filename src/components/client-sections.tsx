@@ -1,35 +1,27 @@
-import { useState } from "react";
 import type {
-  Client,
-  AccessCheckItem,
-  ConnectionItem,
-  TaskItem,
-  StaffVerificationItem,
-  Blocker,
-  GuideSentRecord,
+  Call,
+  CallItem,
+  CallGuideRecord,
   GuideLink,
-  ConnectionStatus,
-  TaskStatus,
-  StaffVerificationStatus,
+  ItemStatus,
   ReviewOutcome,
   GuideChannel,
+  AuditEntry,
 } from "../lib/types";
 import {
-  isAccessDone,
-  isConnectionSatisfied,
-  isTaskSatisfied,
-  taskCompletionProofValid,
-  isStaffVerificationDone,
+  isItemDone,
+  isItemExempt,
+  itemStatusLabel,
+  guideLabel,
+  guideHasUrl,
+  guideUrl,
   isGuideSentValid,
   isGuideExempt,
   isGuideOutstanding,
-  guideLabel,
-  guideHasUrl,
 } from "../lib/completion";
 import {
-  CONNECTION_STATUSES,
-  TASK_STATUSES,
-  STAFF_VERIFICATION_STATUSES,
+  CLIENT_ACTION_STATUSES,
+  STAFF_CHECK_STATUSES,
   REVIEW_OUTCOMES,
   GUIDE_CHANNELS,
 } from "../lib/types";
@@ -37,7 +29,7 @@ import {
 export const inputCls =
   "w-full rounded-xl border border-border bg-background px-3 py-2 text-xs sm:text-sm text-foreground outline-hidden focus:ring-2 focus:ring-accent min-h-[40px]";
 
-export function AuditTrail({ entries }: { entries: import("../lib/types").AuditEntry[] }) {
+export function AuditTrail({ entries }: { entries: AuditEntry[] }) {
   if (!entries || entries.length === 0) return null;
   return (
     <details className="mt-2.5 rounded-lg border border-border/60 bg-card/40 p-2">
@@ -60,510 +52,265 @@ export function AuditTrail({ entries }: { entries: import("../lib/types").AuditE
   );
 }
 
-export function AccessSection({
-  client,
+const STATUS_TONE: Record<ItemStatus, string> = {
+  not_checked: "border-border bg-background",
+  done: "border-chart-1/40 bg-chart-1/5",
+  needs_help: "border-destructive/40 bg-destructive/5",
+  not_applicable: "border-accent/30 bg-accent/10",
+};
+
+const STATUS_BADGE: Record<ItemStatus, string> = {
+  not_checked: "bg-secondary text-muted-foreground",
+  done: "bg-chart-1/20 text-chart-1",
+  needs_help: "bg-destructive/15 text-destructive",
+  not_applicable: "bg-accent/20 text-accent",
+};
+
+export function CallItemRow({
+  item,
   actor,
-  onCheck,
+  onSet,
 }: {
-  client: Client;
+  item: CallItem;
   actor: string;
-  onCheck: (checkId: string, patch: Partial<AccessCheckItem>, reason?: string) => void;
+  onSet: (patch: Partial<CallItem>, reason?: string) => void;
 }) {
-  return (
-    <section className="rounded-2xl border border-border bg-card p-5">
-      <div className="flex items-center justify-between mb-2">
-        <div>
-          <span className="text-xs font-mono font-bold text-accent uppercase tracking-wider">Section A</span>
-          <h2 className="font-display text-lg font-bold text-foreground">Phone-App Access Checks</h2>
-        </div>
-      </div>
-      <p className="text-xs text-muted-foreground mb-4">
-        Verify the client personally logged into the mobile app and selected the correct business. Do not record passwords or credentials.
-      </p>
-
-      <div className="space-y-3">
-        {client.accessChecks.map((a) => {
-          const verified = isAccessDone(a);
-          return (
-            <div
-              key={a.id}
-              className={`rounded-xl border p-4 transition-colors ${
-                verified ? "border-chart-1/40 bg-chart-1/5" : "border-border bg-background"
-              }`}
-            >
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <label className="flex items-center gap-2.5 font-semibold text-sm cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={a.checked}
-                    onChange={(e) =>
-                      onCheck(
-                        a.id,
-                        {
-                          checked: e.target.checked,
-                          verifier: e.target.checked ? actor : undefined,
-                          verifiedAt: e.target.checked ? new Date().toISOString() : undefined,
-                        },
-                        e.target.checked ? "Verified login" : "Unverified",
-                      )
-                    }
-                    className="h-4 w-4 rounded border-border accent-primary cursor-pointer"
-                  />
-                  <span>{a.label}</span>
-                </label>
-                <span
-                  className={`text-xs font-bold px-2 py-0.5 rounded ${
-                    verified ? "bg-chart-1/20 text-chart-1" : "bg-secondary text-muted-foreground"
-                  }`}
-                >
-                  {verified ? "Verified" : "Pending"}
-                </span>
-              </div>
-
-              <div className="mt-3 grid gap-2 sm:grid-cols-2 text-xs">
-                <div>
-                  <span className="block text-[11px] text-muted-foreground mb-1">Staff Verifier:</span>
-                  <input
-                    className={inputCls}
-                    defaultValue={a.verifier ?? ""}
-                    onBlur={(e) => onCheck(a.id, { verifier: e.target.value || undefined }, "Verifier updated")}
-                  />
-                </div>
-                <div>
-                  <span className="block text-[11px] text-muted-foreground mb-1">Result / Observation Note:</span>
-                  <input
-                    className={inputCls}
-                    placeholder="e.g. Observed client sign in via magic link"
-                    defaultValue={a.resultNote ?? ""}
-                    onBlur={(e) => onCheck(a.id, { resultNote: e.target.value || undefined }, "Note updated")}
-                  />
-                </div>
-              </div>
-
-              {a.audit.length > 0 && <AuditTrail entries={a.audit} />}
-            </div>
-          );
-        })}
-      </div>
-    </section>
-  );
-}
-
-export function ConnectionsSection({
-  client,
-  actor,
-  onSetConnection,
-}: {
-  client: Client;
-  actor: string;
-  onSetConnection: (connId: string, patch: Partial<ConnectionItem>, reason?: string) => void;
-}) {
-  return (
-    <section className="rounded-2xl border border-border bg-card p-5">
-      <div className="flex items-center justify-between mb-2">
-        <div>
-          <span className="text-xs font-mono font-bold text-accent uppercase tracking-wider">Section B</span>
-          <h2 className="font-display text-lg font-bold text-foreground">Integrations &amp; Connections</h2>
-        </div>
-      </div>
-      <p className="text-xs text-muted-foreground mb-4">
-        A connected integration does NOT complete practical tasks. Required connections cannot remain unchecked. Any "Not applicable" requires an explicit reason and reviewer acknowledgement.
-      </p>
-
-      <div className="space-y-3">
-        {client.connections.map((c) => {
-          const isNa = c.status === "not_applicable";
-          return (
-            <div
-              key={c.id}
-              className={`rounded-xl border p-4 ${
-                c.status === "connected"
-                  ? "border-chart-1/40 bg-chart-1/5"
-                  : c.status === "blocked"
-                  ? "border-destructive/40 bg-destructive/5"
-                  : "border-border bg-background"
-              }`}
-            >
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="flex items-center gap-2">
-                  <span className="font-bold text-sm text-foreground">{c.label}</span>
-                  {c.required ? (
-                    <span className="rounded bg-primary/20 px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wide text-primary">
-                      Required
-                    </span>
-                  ) : (
-                    <span className="rounded bg-secondary px-2 py-0.5 text-[10px] font-semibold text-muted-foreground">
-                      Optional
-                    </span>
-                  )}
-                </div>
-                <select
-                  className={inputCls + " w-44 font-semibold"}
-                  value={c.status}
-                  onChange={(e) =>
-                    onSetConnection(
-                      c.id,
-                      {
-                        status: e.target.value as ConnectionStatus,
-                        verifiedAt: e.target.value === "connected" ? (c.verifiedAt ?? new Date().toISOString()) : c.verifiedAt,
-                        verifier: e.target.value === "connected" ? (c.verifier ?? actor) : c.verifier,
-                      },
-                      `Status changed to ${e.target.value}`,
-                    )
-                  }
-                >
-                  {CONNECTION_STATUSES.map((s) => (
-                    <option key={s.value} value={s.value}>{s.label}</option>
-                  ))}
-                </select>
-              </div>
-
-              {isNa && (
-                <div className="mt-3 rounded-lg border border-accent/30 bg-accent/10 p-3 space-y-2">
-                  <div className="text-xs font-bold text-accent">Exemption Requirements (Reason + Reviewer Acknowledgement):</div>
-                  <input
-                    className={inputCls}
-                    placeholder="Exemption reason (mandatory)..."
-                    defaultValue={c.notApplicableReason ?? ""}
-                    onBlur={(e) => onSetConnection(c.id, { notApplicableReason: e.target.value }, "Exemption reason recorded")}
-                  />
-                  <label className="flex items-center gap-2 text-xs font-semibold cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={!!c.acknowledgedByReviewer}
-                      onChange={(e) => onSetConnection(c.id, { acknowledgedByReviewer: e.target.checked }, "Reviewer acknowledged N/A")}
-                      className="h-4 w-4 rounded border-border accent-primary cursor-pointer"
-                    />
-                    <span>Reviewer Acknowledgement: I confirm this integration is not applicable.</span>
-                  </label>
-                </div>
-              )}
-
-              <div className="mt-3 grid gap-2 sm:grid-cols-3 text-xs">
-                <div>
-                  <span className="block text-[11px] text-muted-foreground mb-1">Verification Date:</span>
-                  <input
-                    type="date"
-                    className={inputCls}
-                    defaultValue={c.verifiedAt?.slice(0, 10) ?? ""}
-                    onChange={(e) =>
-                      onSetConnection(
-                        c.id,
-                        { verifiedAt: e.target.value ? new Date(e.target.value).toISOString() : undefined },
-                        "Date updated",
-                      )
-                    }
-                  />
-                </div>
-                <div>
-                  <span className="block text-[11px] text-muted-foreground mb-1">Verifier:</span>
-                  <input
-                    className={inputCls}
-                    defaultValue={c.verifier ?? ""}
-                    onBlur={(e) => onSetConnection(c.id, { verifier: e.target.value || undefined }, "Verifier updated")}
-                  />
-                </div>
-                <div>
-                  <span className="block text-[11px] text-muted-foreground mb-1">Notes:</span>
-                  <input
-                    className={inputCls}
-                    defaultValue={c.notes ?? ""}
-                    placeholder="Notes"
-                    onBlur={(e) => onSetConnection(c.id, { notes: e.target.value || undefined }, "Notes updated")}
-                  />
-                </div>
-              </div>
-
-              {c.audit.length > 0 && <AuditTrail entries={c.audit} />}
-            </div>
-          );
-        })}
-      </div>
-    </section>
-  );
-}
-
-export function PracticalSection({
-  client,
-  actor,
-  onSetTask,
-}: {
-  client: Client;
-  actor: string;
-  onSetTask: (taskId: string, patch: Partial<TaskItem>, reason?: string) => void;
-}) {
-  return (
-    <section className="rounded-2xl border border-border bg-card p-5">
-      <div className="flex items-center justify-between mb-2">
-        <div>
-          <span className="text-xs font-mono font-bold text-accent uppercase tracking-wider">Section C</span>
-          <h2 className="font-display text-lg font-bold text-foreground">Client-Led Practical Tasks</h2>
-        </div>
-      </div>
-      <p className="text-xs text-muted-foreground mb-4">
-        "Demonstrated by staff" does NOT count as client completion. To mark "Client completed", staff must confirm the client performed the action, provide a non-empty evidence note, staff member and timestamp.
-      </p>
-
-      <div className="space-y-3">
-        {client.tasks.map((t) => {
-          const isReviewSend = t.id.includes("-5") || t.label.toLowerCase().includes("sends the google review");
-          const proofValid = taskCompletionProofValid(t);
-
-          return (
-            <div
-              key={t.id}
-              className={`rounded-xl border p-4 transition-colors ${
-                t.status === "client_completed" && proofValid
-                  ? "border-chart-1/40 bg-chart-1/5"
-                  : t.status === "client_completed" && !proofValid
-                  ? "border-destructive/60 bg-destructive/10"
-                  : t.status === "demonstrated_by_staff"
-                  ? "border-amber-500/40 bg-amber-500/5"
-                  : "border-border bg-background"
-              }`}
-            >
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="font-bold text-sm text-foreground">{t.label}</div>
-                <select
-                  className={inputCls + " w-56 font-semibold"}
-                  value={t.status}
-                  onChange={(e) => {
-                    const st = e.target.value as TaskStatus;
-                    onSetTask(
-                      t.id,
-                      {
-                        status: st,
-                        completedBy: st === "client_completed" ? (t.completedBy ?? actor) : t.completedBy,
-                        completedAt: st === "client_completed" ? (t.completedAt ?? new Date().toISOString()) : t.completedAt,
-                      },
-                      `Status changed to ${st}`,
-                    );
-                  }}
-                >
-                  {TASK_STATUSES.map((s) => (
-                    <option key={s.value} value={s.value}>{s.label}</option>
-                  ))}
-                </select>
-              </div>
-
-              {t.status === "demonstrated_by_staff" && (
-                <div className="mt-2.5 rounded-lg border border-amber-500/40 bg-amber-500/10 p-2.5 text-xs text-amber-200">
-                  ⚠️ <strong>Staff demonstration only:</strong> this does NOT count as client completion.
-                </div>
-              )}
-
-              {t.status === "not_applicable" && (
-                <div className="mt-3 rounded-lg border border-accent/30 bg-accent/10 p-3 space-y-2">
-                  <div className="text-xs font-bold text-accent">Task Exemption (Reason + Reviewer Acknowledgement):</div>
-                  <input
-                    className={inputCls}
-                    placeholder="Exemption reason (mandatory)..."
-                    defaultValue={t.notApplicableReason ?? ""}
-                    onBlur={(e) => onSetTask(t.id, { notApplicableReason: e.target.value }, "N/A reason recorded")}
-                  />
-                  <label className="flex items-center gap-2 text-xs font-semibold cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={!!t.acknowledgedByReviewer}
-                      onChange={(e) => onSetTask(t.id, { acknowledgedByReviewer: e.target.checked }, "Acknowledged N/A")}
-                      className="h-4 w-4 rounded border-border accent-primary cursor-pointer"
-                    />
-                    <span>Reviewer Acknowledgement: I confirm this practical task is exempted.</span>
-                  </label>
-                </div>
-              )}
-
-              {t.status === "client_completed" && (
-                <div className="mt-3 space-y-3 rounded-lg border border-border/80 bg-card/60 p-3">
-                  <label className="flex items-center gap-2 text-xs font-bold cursor-pointer text-foreground">
-                    <input
-                      type="checkbox"
-                      checked={!!t.clientConfirmed}
-                      onChange={(e) => onSetTask(t.id, { clientConfirmed: e.target.checked }, "Client confirmation toggled")}
-                      className="h-4 w-4 rounded border-border accent-primary cursor-pointer"
-                    />
-                    <span>Confirmation: I personally observed the client execute this task themselves</span>
-                  </label>
-
-                  <div>
-                    <span className="block text-[11px] font-semibold text-muted-foreground mb-1">
-                      Evidence / Result Note * (Mandatory — describe what was observed):
-                    </span>
-                    <textarea
-                      className={inputCls}
-                      rows={2}
-                      placeholder="e.g. Client opened review flow, selected test contact and previewed SMS."
-                      defaultValue={t.evidence ?? ""}
-                      onBlur={(e) =>
-                        onSetTask(
-                          t.id,
-                          {
-                            evidence: e.target.value,
-                            completedBy: actor,
-                            completedAt: t.completedAt ?? new Date().toISOString(),
-                          },
-                          "Evidence note updated",
-                        )
-                      }
-                    />
-                  </div>
-
-                  <div className="grid gap-2 sm:grid-cols-2 text-xs">
-                    <div>
-                      <span className="block text-[11px] text-muted-foreground mb-1">Staff Member:</span>
-                      <input
-                        className={inputCls}
-                        defaultValue={t.completedBy ?? actor}
-                        onBlur={(e) => onSetTask(t.id, { completedBy: e.target.value }, "Staff updated")}
-                      />
-                    </div>
-                    <div>
-                      <span className="block text-[11px] text-muted-foreground mb-1">Completion Timestamp:</span>
-                      <input
-                        type="datetime-local"
-                        className={inputCls}
-                        defaultValue={t.completedAt ? t.completedAt.slice(0, 16) : ""}
-                        onChange={(e) =>
-                          onSetTask(
-                            t.id,
-                            { completedAt: e.target.value ? new Date(e.target.value).toISOString() : undefined },
-                            "Timestamp updated",
-                          )
-                        }
-                      />
-                    </div>
-                  </div>
-
-                  {isReviewSend && (
-                    <div className="border-t border-border/60 pt-2 flex flex-wrap items-center gap-2">
-                      <span className="text-xs font-semibold text-accent">Review Outcome on Send:</span>
-                      <select
-                        className={inputCls + " w-48 font-semibold"}
-                        value={t.reviewOutcome ?? "sent"}
-                        onChange={(e) => onSetTask(t.id, { reviewOutcome: e.target.value as ReviewOutcome }, "Outcome updated")}
-                      >
-                        {REVIEW_OUTCOMES.map((r) => (
-                          <option key={r.value} value={r.value}>{r.label}</option>
-                        ))}
-                      </select>
-                    </div>
-                  )}
-
-                  {!proofValid && (
-                    <div className="rounded border border-destructive/40 bg-destructive/15 px-2.5 py-1.5 text-xs text-destructive font-medium">
-                      Missing proof: Check confirmation box, supply non-empty evidence, staff verifier and timestamp.
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {t.audit.length > 0 && <AuditTrail entries={t.audit} />}
-            </div>
-          );
-        })}
-      </div>
-    </section>
-  );
-}
-
-export function StaffVerificationSection({
-  client,
-  actor,
-  onSetVerification,
-}: {
-  client: Client;
-  actor: string;
-  onSetVerification: (patch: Partial<StaffVerificationItem>, reason?: string) => void;
-}) {
-  const sv = client.staffVerification;
-  const verified = isStaffVerificationDone(sv);
+  const isClientAction = item.kind === "client_action";
+  const statuses = isClientAction ? CLIENT_ACTION_STATUSES : STAFF_CHECK_STATUSES;
+  const done = isItemDone(item);
+  const exempt = isItemExempt(item);
 
   return (
-    <section className="rounded-2xl border border-border bg-card p-5">
-      <div className="flex items-center justify-between mb-2">
-        <div>
-          <span className="text-xs font-mono font-bold text-accent uppercase tracking-wider">Section D</span>
-          <h2 className="font-display text-lg font-bold text-foreground">Staff Verification of Recorded Result</h2>
+    <div className={`rounded-xl border p-4 transition-colors ${STATUS_TONE[item.status]}`}>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <span className="font-bold text-sm text-foreground">{item.label}</span>
+          {item.required ? (
+            <span className="rounded bg-primary/20 px-1.5 py-0.5 text-[10px] font-extrabold uppercase tracking-wide text-primary">
+              Req
+            </span>
+          ) : (
+            <span className="rounded bg-secondary px-1.5 py-0.5 text-[10px] font-semibold text-muted-foreground">
+              Opt
+            </span>
+          )}
+          <span className={`rounded px-1.5 py-0.5 text-[10px] font-bold uppercase ${isClientAction ? "text-accent" : "text-primary"}`}>
+            {isClientAction ? "Client" : "Staff"}
+          </span>
         </div>
-        <span
-          className={`text-xs font-bold px-2 py-0.5 rounded ${
-            verified ? "bg-chart-1/20 text-chart-1" : "bg-secondary text-muted-foreground"
-          }`}
-        >
-          {verified ? "Verified" : "Pending"}
-        </span>
-      </div>
-      <p className="text-xs text-muted-foreground mb-4">
-        Staff-only check. Verify the outcome of actions recorded in LSP CRM. Do not ask client to confirm this.
-      </p>
-
-      <div className="rounded-xl border border-border bg-background p-4 space-y-3">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <span className="font-bold text-sm text-foreground">{sv.label}</span>
+        <div className="flex items-center gap-2">
+          <span className={`text-xs font-bold px-2 py-0.5 rounded ${STATUS_BADGE[item.status]}`}>
+            {itemStatusLabel(item)}
+          </span>
           <select
-            className={inputCls + " w-48 font-semibold"}
-            value={sv.status}
-            onChange={(e) =>
-              onSetVerification(
+            className={inputCls + " w-40 font-semibold"}
+            value={item.status}
+            onChange={(e) => {
+              const st = e.target.value as ItemStatus;
+              onSet(
                 {
-                  status: e.target.value as StaffVerificationStatus,
-                  verifier: e.target.value === "verified" ? (sv.verifier ?? actor) : sv.verifier,
-                  verifiedAt: e.target.value === "verified" ? (sv.verifiedAt ?? new Date().toISOString()) : sv.verifiedAt,
+                  status: st,
+                  completedBy: st === "done" ? (item.completedBy ?? actor) : item.completedBy,
+                  completedAt: st === "done" ? (item.completedAt ?? new Date().toISOString()) : item.completedAt,
                 },
-                `Status set to ${e.target.value}`,
-              )
-            }
+                `Status → ${st}`,
+              );
+            }}
           >
-            {STAFF_VERIFICATION_STATUSES.map((s) => (
+            {statuses.map((s) => (
               <option key={s.value} value={s.value}>{s.label}</option>
             ))}
           </select>
         </div>
+      </div>
 
-        <div className="grid gap-3 sm:grid-cols-2 text-xs">
+      {/* Done: evidence / verification note */}
+      {item.status === "done" && (
+        <div className="mt-3 space-y-2 rounded-lg border border-border/80 bg-card/60 p-3">
+          {isClientAction && (
+            <p className="text-xs font-semibold text-muted-foreground">
+              "Client did it" = staff observed the client personally perform this action. A staff demonstration does NOT count.
+            </p>
+          )}
           <div>
-            <span className="block text-[11px] font-semibold text-muted-foreground mb-1">Review Outcome in LSP:</span>
-            <select
-              className={inputCls}
-              value={sv.reviewOutcome ?? "unknown"}
-              onChange={(e) => onSetVerification({ reviewOutcome: e.target.value as ReviewOutcome }, "Outcome updated")}
-            >
-              {REVIEW_OUTCOMES.map((r) => (
-                <option key={r.value} value={r.value}>{r.label}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <span className="block text-[11px] font-semibold text-muted-foreground mb-1">Staff Verifier:</span>
-            <input
-              className={inputCls}
-              defaultValue={sv.verifier ?? actor}
-              onBlur={(e) => onSetVerification({ verifier: e.target.value }, "Verifier updated")}
-            />
-          </div>
-          <div className="sm:col-span-2">
-            <span className="block text-[11px] font-semibold text-muted-foreground mb-1">
-              Result / Evidence Note * (Mandatory for verification):
+            <span className="block text-[11px] text-muted-foreground mb-1">
+              {isClientAction ? "Evidence / Result Note * (mandatory — describe what you observed):" : "Verification Note:"}
             </span>
             <textarea
               className={inputCls}
-              rows={2}
-              placeholder="e.g. Inspected conversation thread: request recorded, sent and receipt confirmed by recipient."
-              defaultValue={sv.resultNote ?? ""}
-              onBlur={(e) =>
-                onSetVerification(
-                  {
-                    resultNote: e.target.value,
-                    verifiedAt: sv.verifiedAt ?? new Date().toISOString(),
-                  },
-                  "Result note updated",
-                )
-              }
+              rows={isClientAction ? 2 : 1}
+              placeholder={isClientAction ? "e.g. Client opened review flow, selected test contact and previewed SMS." : "Brief verification note..."}
+              defaultValue={item.evidence ?? ""}
+              onBlur={(e) => onSet({ evidence: e.target.value, completedBy: actor, completedAt: item.completedAt ?? new Date().toISOString() }, "Evidence note updated")}
             />
           </div>
+          <div className="grid gap-2 sm:grid-cols-2 text-xs">
+            <div>
+              <span className="block text-[11px] text-muted-foreground mb-1">Staff:</span>
+              <input className={inputCls} defaultValue={item.completedBy ?? actor} onBlur={(e) => onSet({ completedBy: e.target.value }, "Staff updated")} />
+            </div>
+            <div>
+              <span className="block text-[11px] text-muted-foreground mb-1">Timestamp:</span>
+              <input
+                type="datetime-local"
+                className={inputCls}
+                defaultValue={item.completedAt ? item.completedAt.slice(0, 16) : ""}
+                onChange={(e) => onSet({ completedAt: e.target.value ? new Date(e.target.value).toISOString() : undefined }, "Timestamp updated")}
+              />
+            </div>
+          </div>
+          {isClientAction && !done && (
+            <div className="rounded border border-destructive/40 bg-destructive/15 px-2.5 py-1.5 text-xs text-destructive font-medium">
+              Missing evidence note — client completion not valid yet.
+            </div>
+          )}
+          {item.reviewSend && (
+            <div className="flex flex-wrap items-center gap-2 border-t border-border/60 pt-2">
+              <span className="text-xs font-semibold text-accent">Review Outcome:</span>
+              <select
+                className={inputCls + " w-44"}
+                value={item.reviewOutcome ?? "sent"}
+                onChange={(e) => onSet({ reviewOutcome: e.target.value as ReviewOutcome }, "Review outcome updated")}
+              >
+                {REVIEW_OUTCOMES.map((r) => (
+                  <option key={r.value} value={r.value}>{r.label}</option>
+                ))}
+              </select>
+              <span className="text-[11px] text-muted-foreground">"Sent" ≠ "Receipt confirmed".</span>
+            </div>
+          )}
         </div>
+      )}
 
-        {sv.audit.length > 0 && <AuditTrail entries={sv.audit} />}
+      {/* Needs help: issue + next action */}
+      {item.status === "needs_help" && (
+        <div className="mt-3 space-y-2 rounded-lg border border-destructive/40 bg-destructive/5 p-3">
+          <div>
+            <span className="block text-[11px] text-destructive mb-1">Issue * (required):</span>
+            <input className={inputCls} placeholder="Describe the issue..." defaultValue={item.issue ?? ""} onBlur={(e) => onSet({ issue: e.target.value }, "Issue recorded")} />
+          </div>
+          <div>
+            <span className="block text-[11px] text-muted-foreground mb-1">Next Action:</span>
+            <input className={inputCls} placeholder="What needs to happen next..." defaultValue={item.nextAction ?? ""} onBlur={(e) => onSet({ nextAction: e.target.value }, "Next action recorded")} />
+          </div>
+          <div className="grid gap-2 sm:grid-cols-2 text-xs">
+            <div>
+              <span className="block text-[11px] text-muted-foreground mb-1">Owner (Staff):</span>
+              <input className={inputCls} defaultValue={item.completedBy ?? actor} onBlur={(e) => onSet({ completedBy: e.target.value }, "Owner updated")} />
+            </div>
+            <div>
+              <span className="block text-[11px] text-muted-foreground mb-1">Recorded At:</span>
+              <input type="datetime-local" className={inputCls} defaultValue={item.completedAt ? item.completedAt.slice(0, 16) : ""} onChange={(e) => onSet({ completedAt: e.target.value ? new Date(e.target.value).toISOString() : undefined }, "Timestamp updated")} />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Not applicable: reason + reviewer ack */}
+      {item.status === "not_applicable" && (
+        <div className="mt-3 space-y-2 rounded-lg border border-accent/30 bg-accent/10 p-3">
+          <div className="text-xs font-bold text-accent">Exemption (Reason + Reviewer Acknowledgement):</div>
+          <input className={inputCls} placeholder="Exemption reason (mandatory)..." defaultValue={item.notApplicableReason ?? ""} onBlur={(e) => onSet({ notApplicableReason: e.target.value }, "N/A reason recorded")} />
+          <label className="flex items-center gap-2 text-xs font-semibold cursor-pointer">
+            <input type="checkbox" checked={!!item.acknowledgedByReviewer} onChange={(e) => onSet({ acknowledgedByReviewer: e.target.checked }, "Reviewer acknowledged N/A")} className="h-4 w-4 rounded border-border accent-primary cursor-pointer" />
+            <span>Reviewer Acknowledgement: I confirm this item is not applicable.</span>
+          </label>
+          {!exempt && <div className="rounded border border-amber-500/40 bg-amber-500/10 px-2.5 py-1 text-xs text-amber-300">Reason and acknowledgement required for a valid exemption.</div>}
+        </div>
+      )}
+
+      {item.audit.length > 0 && <AuditTrail entries={item.audit} />}
+    </div>
+  );
+}
+
+export function CallGuidesSection({
+  call,
+  actor,
+  guides,
+  onSetGuide,
+}: {
+  call: Call;
+  actor: string;
+  guides: GuideLink[];
+  onSetGuide: (guideId: string, patch: Partial<CallGuideRecord>, reason?: string) => void;
+}) {
+  return (
+    <section className="rounded-2xl border border-border bg-card p-5">
+      <h2 className="font-display text-lg font-bold text-foreground">How-To Guides</h2>
+      <p className="mt-1 text-xs text-muted-foreground">
+        Opening a guide does NOT mark it sent. "Mark sent" requires a valid supplied link, date, channel and staff. A verbal walkthrough is recorded separately and never counts as a sent guide. A missing guide cannot be marked sent.
+      </p>
+      <div className="mt-3 space-y-3">
+        {call.guides.map((g) => {
+          const label = guideLabel(g, guides);
+          const url = guideUrl(g, guides);
+          const hasUrl = guideHasUrl(g, guides);
+          const sentValid = isGuideSentValid(g, guides);
+          const outstanding = isGuideOutstanding(g, guides);
+          const exempt = isGuideExempt(g);
+
+          return (
+            <div key={g.guideId} className={`rounded-xl border p-4 ${sentValid ? "border-chart-1/40 bg-chart-1/5" : outstanding ? "border-amber-500/40 bg-amber-500/5" : exempt ? "border-accent/30 bg-accent/10" : "border-border bg-background"}`}>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="font-bold text-sm text-foreground">{label}</div>
+                {hasUrl ? (
+                  <a href={url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 rounded-lg border border-accent/40 bg-accent/10 px-2.5 py-1 text-xs font-semibold text-accent hover:bg-accent/20 transition-colors">
+                    Open Guide Link ↗
+                  </a>
+                ) : (
+                  <span className="rounded bg-secondary px-2.5 py-1 text-xs text-muted-foreground">Guide link not added</span>
+                )}
+              </div>
+
+              {/* Mark sent — disabled when no URL */}
+              <div className="mt-3 flex flex-wrap items-center gap-3 border-t border-border/60 pt-3">
+                <label className="flex items-center gap-2 text-xs font-bold cursor-pointer text-foreground">
+                  <input type="checkbox" checked={g.sent} disabled={!hasUrl} onChange={(e) => onSetGuide(g.guideId, { sent: e.target.checked, sentAt: e.target.checked ? (g.sentAt ?? new Date().toISOString()) : undefined, sentBy: e.target.checked ? (g.sentBy ?? actor) : undefined, channel: e.target.checked ? (g.channel ?? "email") : undefined, suppliedUrlOrVersion: e.target.checked ? (g.suppliedUrlOrVersion ?? url ?? "") : undefined }, e.target.checked ? "Guide send recorded" : "Guide send cleared")} className="h-4 w-4 rounded border-border accent-primary cursor-pointer disabled:opacity-40" />
+                  <span>Mark as Sent{hasUrl ? "" : " (disabled — no guide URL)"}</span>
+                </label>
+                {g.sent && !sentValid && <span className="rounded border border-destructive/40 bg-destructive/15 px-2 py-0.5 text-[11px] font-semibold text-destructive">Invalid: missing link/date/channel/staff</span>}
+              </div>
+
+              {g.sent && (
+                <div className="mt-3 grid gap-2 sm:grid-cols-3 text-xs">
+                  <div><span className="block text-[11px] text-muted-foreground mb-1">Date Sent:</span><input type="date" className={inputCls} defaultValue={g.sentAt?.slice(0, 10) ?? ""} onChange={(e) => onSetGuide(g.guideId, { sentAt: e.target.value ? new Date(e.target.value).toISOString() : undefined }, actor)} /></div>
+                  <div><span className="block text-[11px] text-muted-foreground mb-1">Channel:</span><select className={inputCls} defaultValue={g.channel ?? "email"} onChange={(e) => onSetGuide(g.guideId, { channel: e.target.value as GuideChannel }, actor)}>{GUIDE_CHANNELS.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}</select></div>
+                  <div><span className="block text-[11px] text-muted-foreground mb-1">Sent By:</span><input className={inputCls} defaultValue={g.sentBy ?? actor} onBlur={(e) => onSetGuide(g.guideId, { sentBy: e.target.value }, actor)} /></div>
+                  <div className="sm:col-span-3"><span className="block text-[11px] text-muted-foreground mb-1">Supplied URL / Version *:</span><input className={inputCls} placeholder={hasUrl ? url : "Enter the supplied URL or document version"} defaultValue={g.suppliedUrlOrVersion ?? ""} onBlur={(e) => onSetGuide(g.guideId, { suppliedUrlOrVersion: e.target.value }, actor)} /></div>
+                </div>
+              )}
+
+              {/* Verbal walkthrough — separate */}
+              <div className="mt-3 rounded-lg border border-border/60 bg-card/40 p-3">
+                <div className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2">Verbal Walkthrough (separate — does NOT count as sent)</div>
+                <label className="flex items-center gap-2 text-xs font-bold cursor-pointer text-foreground">
+                  <input type="checkbox" checked={!!g.walkthroughProvided} onChange={(e) => onSetGuide(g.guideId, { walkthroughProvided: e.target.checked, walkthroughAt: e.target.checked ? (g.walkthroughAt ?? new Date().toISOString()) : undefined, walkthroughBy: e.target.checked ? (g.walkthroughBy ?? actor) : undefined }, e.target.checked ? "Verbal walkthrough recorded" : "Walkthrough cleared")} className="h-4 w-4 rounded border-border accent-accent cursor-pointer" />
+                  <span>Verbal walkthrough provided on call</span>
+                </label>
+                {g.walkthroughProvided && (
+                  <div className="mt-2 grid gap-2 sm:grid-cols-3 text-xs">
+                    <div><span className="block text-[11px] text-muted-foreground mb-1">Date:</span><input type="date" className={inputCls} defaultValue={g.walkthroughAt?.slice(0, 10) ?? ""} onChange={(e) => onSetGuide(g.guideId, { walkthroughAt: e.target.value ? new Date(e.target.value).toISOString() : undefined }, actor)} /></div>
+                    <div><span className="block text-[11px] text-muted-foreground mb-1">By:</span><input className={inputCls} defaultValue={g.walkthroughBy ?? actor} onBlur={(e) => onSetGuide(g.guideId, { walkthroughBy: e.target.value }, actor)} /></div>
+                    <div className="sm:col-span-3"><span className="block text-[11px] text-muted-foreground mb-1">Notes:</span><input className={inputCls} defaultValue={g.walkthroughNotes ?? ""} onBlur={(e) => onSetGuide(g.guideId, { walkthroughNotes: e.target.value }, actor)} /></div>
+                  </div>
+                )}
+              </div>
+
+              {/* Exemption */}
+              <div className="mt-3 rounded-lg border border-border/60 bg-card/40 p-3">
+                <div className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2">Documented Exemption (reason + reviewer ack)</div>
+                <input className={inputCls} placeholder="Exemption reason..." defaultValue={g.notApplicableReason ?? ""} onBlur={(e) => onSetGuide(g.guideId, { notApplicableReason: e.target.value }, actor)} />
+                <label className="mt-2 flex items-center gap-2 text-xs font-semibold cursor-pointer">
+                  <input type="checkbox" checked={!!g.acknowledgedByReviewer} onChange={(e) => onSetGuide(g.guideId, { acknowledgedByReviewer: e.target.checked }, actor)} className="h-4 w-4 rounded border-border accent-primary cursor-pointer" />
+                  <span>Reviewer acknowledges this exemption.</span>
+                </label>
+              </div>
+
+              {g.audit.length > 0 && <AuditTrail entries={g.audit} />}
+            </div>
+          );
+        })}
       </div>
     </section>
   );

@@ -1,27 +1,24 @@
-// Domain types for the LSP Onboarding Checklist.
-// This is a staff tool. It only RECORDS the outcome of actions performed in
-// LSP — it never sends review requests, creates CRM contacts, or connects
-// integrations on the client's behalf.
+// Domain types for the LSP Onboarding Checklist — a practical client-call tracker.
 //
-// Optional properties are declared `?: T | undefined` so that callers may
-// explicitly pass `undefined` (the project enables exactOptionalPropertyTypes).
+// This is a staff tool. It only RECORDS the outcome of actions performed in
+// LSP — it never sends review requests, creates CRM contacts, connects
+// integrations, or triggers workflows on the client's behalf.
+//
+// Optional properties are declared `?: T | undefined` so callers may explicitly
+// pass `undefined` (the project enables exactOptionalPropertyTypes).
 
-export type OverallStatus = "not_started" | "in_progress" | "blocked" | "completed";
+export type CallType = "connection" | "onboarding";
 
-export type ConnectionStatus = "not_checked" | "connected" | "blocked" | "not_applicable";
+export type CallStatus = "not_started" | "in_progress" | "needs_followup" | "completed";
 
-export type TaskStatus =
-  | "not_started"
-  | "demonstrated_by_staff"
-  | "client_completed"
-  | "blocked"
-  | "not_applicable";
+export type ItemKind = "client_action" | "staff_check";
 
-export type StaffVerificationStatus =
-  | "not_checked"
-  | "verified"
-  | "blocked"
-  | "not_applicable";
+// A simpler, practical item status.
+//   not_checked   — untouched (NOT a blocker just because a call hasn't happened)
+//   done          — completed (client did it for client_action; Done for staff_check)
+//   needs_help    — an actual issue was recorded (this is what "needs follow-up" means)
+//   not_applicable — exempted (requires a reason + reviewer acknowledgement)
+export type ItemStatus = "not_checked" | "done" | "needs_help" | "not_applicable";
 
 export type ReviewOutcome = "recorded" | "sent" | "receipt_confirmed" | "failed" | "unknown";
 
@@ -37,120 +34,85 @@ export interface AuditEntry {
   reason: string;
 }
 
-export interface AccessCheckItem {
-  id: string;
-  label: string; // e.g. "Client personally logged into phone app" | "Client selected correct business/subaccount"
-  checked: boolean;
-  verifiedAt?: string | undefined;
-  verifier?: string | undefined;
-  resultNote?: string | undefined;
-  audit: AuditEntry[];
-}
-
-export interface ConnectionItem {
+export interface CallItem {
   id: string;
   label: string;
-  required: boolean; // Explicitly required vs optional
-  status: ConnectionStatus;
-  verifiedAt?: string | undefined;
-  verifier?: string | undefined;
-  notes?: string | undefined;
-  notApplicableReason?: string | undefined;
-  acknowledgedByReviewer?: boolean | undefined;
-  audit: AuditEntry[];
-}
-
-export interface TaskItem {
-  id: string;
-  label: string;
-  status: TaskStatus;
-  clientConfirmed?: boolean | undefined; // Confirmation client performed it themselves
-  evidence?: string | undefined; // Non-empty evidence note
-  completedBy?: string | undefined; // Staff member who observed
+  kind: ItemKind;
+  required: boolean;
+  status: ItemStatus;
+  // `done` proof — a result/evidence note + staff + timestamp.
+  // For client_action: "Client did it" means staff observed the client perform
+  // it; a staff demonstration does NOT count. Requires a non-empty evidence note.
+  // For staff_check: a brief verification note + verifier + timestamp.
+  evidence?: string | undefined;
+  completedBy?: string | undefined;
   completedAt?: string | undefined;
+  // `needs_help` — an actual issue was recorded.
+  issue?: string | undefined;
+  nextAction?: string | undefined;
+  // `not_applicable` — exemption requires a reason + reviewer acknowledgement.
   notApplicableReason?: string | undefined;
   acknowledgedByReviewer?: boolean | undefined;
+  // Review-send task: keep "Sent" and "Receipt confirmed" distinct.
   reviewOutcome?: ReviewOutcome | undefined;
+  // Marks the "send review request" item so the review-outcome selector shows.
+  reviewSend?: boolean | undefined;
+  // Help text / guide link id hint copied from the template.
+  helpText?: string | undefined;
   audit: AuditEntry[];
 }
 
-export interface StaffVerificationItem {
-  id: string;
-  label: string; // "Staff checks recorded result in LSP"
-  status: StaffVerificationStatus;
-  verifier?: string | undefined;
-  verifiedAt?: string | undefined;
-  resultNote?: string | undefined;
-  reviewOutcome?: ReviewOutcome | undefined; // recorded | sent | receipt_confirmed | failed | unknown
-  notApplicableReason?: string | undefined;
-  acknowledgedByReviewer?: boolean | undefined;
-  audit: AuditEntry[];
-}
-
-export interface Blocker {
-  id: string;
-  summary: string;
-  owner: string;
-  nextAction: string;
-  dueDate?: string | undefined;
-  createdAt: string;
-  resolved: boolean;
-  resolvedAt?: string | undefined;
-  resolutionNote?: string | undefined;
-  audit: AuditEntry[];
-}
-
-export interface GuideSentRecord {
+export interface CallGuideRecord {
   guideId: string;
   // "Guide sent" requires a valid supplied URL/version + date + channel + staff.
-  // A verbal walkthrough is a SEPARATE activity and never counts as a guide sent.
+  // A verbal walkthrough is a SEPARATE activity and never counts as sent.
+  // A guide with no configured URL cannot be marked Sent.
   sent: boolean;
   sentAt?: string | undefined;
   channel?: GuideChannel | undefined;
   sentBy?: string | undefined;
   suppliedUrlOrVersion?: string | undefined;
-  notes?: string | undefined;
-  // Verbal walkthrough (separate from guide delivery)
+  // Verbal walkthrough (separate from guide delivery).
   walkthroughProvided?: boolean | undefined;
   walkthroughAt?: string | undefined;
   walkthroughBy?: string | undefined;
   walkthroughNotes?: string | undefined;
-  // Documented exemption (only with reason + reviewer acknowledgement)
+  // Documented exemption (only with reason + reviewer acknowledgement).
   notApplicableReason?: string | undefined;
   acknowledgedByReviewer?: boolean | undefined;
   audit: AuditEntry[];
 }
 
-export interface CallSession {
+export interface Call {
   id: string;
   clientId: string;
+  type: CallType;
   date: string;
   staffMember: string;
-  summary?: string | undefined;
+  // Status is derived (see completion.ts), not stored — kept here only for
+  // type compatibility with optional persistence; the UI always recomputes.
   notes?: string | undefined;
+  followUpAction?: string | undefined;
+  followUpDate?: string | undefined;
+  finishedAt?: string | undefined;
+  items: CallItem[];
+  guides: CallGuideRecord[];
   createdAt: string;
+  updatedAt: string;
 }
 
 export interface Client {
   id: string;
   businessName: string;
   clientName: string;
-  ghlLocationId?: string | undefined;
-  ghlLink?: string | undefined;
   assignedTeamMember: string;
-  callDate: string;
-  plan: string;
-  overallStatus: OverallStatus;
+  contactDetails?: string | undefined;
+  ghlLink?: string | undefined;
   notes?: string | undefined;
+  // Next call planning (set via "Schedule Next Call").
+  nextCallType?: CallType | undefined;
   nextCallDate?: string | undefined;
-  accessChecks: AccessCheckItem[];
-  connections: ConnectionItem[];
-  tasks: TaskItem[];
-  staffVerification: StaffVerificationItem;
-  blockers: Blocker[];
-  guides: GuideSentRecord[];
-  callSessions: CallSession[];
-  audit: AuditEntry[];
+  calls: Call[];
   // Internal test records are clearly labelled and never pre-completed.
   isTestRecord?: boolean | undefined;
   testPurpose?: string | undefined;
@@ -170,12 +132,22 @@ export interface TeamMember {
   name: string;
 }
 
+export interface TemplateItem {
+  id: string;
+  label: string;
+  kind: ItemKind;
+  required: boolean;
+  archived?: boolean | undefined;
+  helpText?: string | undefined;
+  reviewSend?: boolean | undefined;
+}
+
 export interface ChecklistTemplate {
   id: string;
+  callType: CallType;
   name: string;
   description?: string | undefined;
-  connectionLabels: { label: string; required: boolean }[];
-  taskLabels: string[];
+  items: TemplateItem[];
 }
 
 export interface Settings {
@@ -189,25 +161,35 @@ export interface AppState {
   settings: Settings;
 }
 
-export const CONNECTION_STATUSES: { value: ConnectionStatus; label: string }[] = [
+export const CALL_TYPES: { value: CallType; label: string }[] = [
+  { value: "connection", label: "Integration & Connection" },
+  { value: "onboarding", label: "Onboarding & Training" },
+];
+
+export const CALL_TYPE_LABEL: Record<CallType, string> = {
+  connection: "Integration & Connection",
+  onboarding: "Onboarding & Training",
+};
+
+export const ITEM_STATUSES: { value: ItemStatus; label: string }[] = [
   { value: "not_checked", label: "Not checked" },
-  { value: "connected", label: "Connected" },
-  { value: "blocked", label: "Blocked" },
+  { value: "done", label: "Done" },
+  { value: "needs_help", label: "Needs help" },
   { value: "not_applicable", label: "Not applicable" },
 ];
 
-export const TASK_STATUSES: { value: TaskStatus; label: string }[] = [
-  { value: "not_started", label: "Not started" },
-  { value: "demonstrated_by_staff", label: "Demonstrated by staff" },
-  { value: "client_completed", label: "Client completed" },
-  { value: "blocked", label: "Blocked" },
+// Client-action items use a friendlier "Client did it" label for `done`.
+export const CLIENT_ACTION_STATUSES: { value: ItemStatus; label: string }[] = [
+  { value: "not_checked", label: "Not checked" },
+  { value: "done", label: "Client did it" },
+  { value: "needs_help", label: "Needs help" },
   { value: "not_applicable", label: "Not applicable" },
 ];
 
-export const STAFF_VERIFICATION_STATUSES: { value: StaffVerificationStatus; label: string }[] = [
+export const STAFF_CHECK_STATUSES: { value: ItemStatus; label: string }[] = [
   { value: "not_checked", label: "Not checked" },
-  { value: "verified", label: "Verified" },
-  { value: "blocked", label: "Blocked" },
+  { value: "done", label: "Done" },
+  { value: "needs_help", label: "Needs help" },
   { value: "not_applicable", label: "Not applicable" },
 ];
 
@@ -219,13 +201,6 @@ export const REVIEW_OUTCOMES: { value: ReviewOutcome; label: string }[] = [
   { value: "unknown", label: "Unknown" },
 ];
 
-export const OVERALL_STATUSES: { value: OverallStatus; label: string }[] = [
-  { value: "not_started", label: "Not started" },
-  { value: "in_progress", label: "In progress" },
-  { value: "blocked", label: "Blocked" },
-  { value: "completed", label: "Completed" },
-];
-
 export const GUIDE_CHANNELS: { value: GuideChannel; label: string }[] = [
   { value: "email", label: "Email" },
   { value: "sms", label: "SMS" },
@@ -234,26 +209,11 @@ export const GUIDE_CHANNELS: { value: GuideChannel; label: string }[] = [
   { value: "other", label: "Other" },
 ];
 
-export const DEFAULT_ACCESS_CHECKS = [
-  "Client personally logged into phone app",
-  "Client selected correct business/subaccount",
-];
-
-export const DEFAULT_CONNECTION_CONFIGS: { label: string; required: boolean }[] = [
-  { label: "Google account", required: true },
-  { label: "Google Business Profile + correct review destination", required: true },
-  { label: "Facebook business page", required: true },
-  { label: "Instagram (where applicable)", required: false },
-  { label: "Other agreed integrations", required: false },
-];
-
-export const DEFAULT_CLIENT_PRACTICAL_TASKS = [
-  "Client searches for an existing contact (avoid duplicates)",
-  "Client manually adds an agreed contact",
-  "Client locates the saved contact",
-  "Client opens the review-request feature",
-  "Client selects an agreed recipient and reviews the message",
-  "Client personally sends the Google review request",
+export const CALL_STATUSES: { value: CallStatus; label: string }[] = [
+  { value: "not_started", label: "Not started" },
+  { value: "in_progress", label: "In progress" },
+  { value: "needs_followup", label: "Needs follow-up" },
+  { value: "completed", label: "Completed" },
 ];
 
 export const DEFAULT_GUIDE_IDS = {
@@ -261,3 +221,30 @@ export const DEFAULT_GUIDE_IDS = {
   sendReview: "guide-send-review",
   onboardingHub: "guide-onboarding-hub",
 } as const;
+
+// ---- Default template items ----
+
+export const DEFAULT_CONNECTION_ITEMS: Omit<TemplateItem, "id">[] = [
+  { label: "Client can access the correct LSP subaccount", kind: "staff_check", required: true },
+  { label: "Google account connected, where required", kind: "staff_check", required: true },
+  { label: "Correct Google Business Profile connected", kind: "staff_check", required: true },
+  { label: "Google review destination checked", kind: "staff_check", required: true },
+  { label: "Facebook business page connected, where required", kind: "staff_check", required: false },
+  { label: "Instagram connected, if included/applicable", kind: "staff_check", required: false },
+  { label: "Calendar connected, if included/applicable", kind: "staff_check", required: false },
+  { label: "Other agreed integrations checked", kind: "staff_check", required: false },
+];
+
+export const DEFAULT_ONBOARDING_ITEMS: Omit<TemplateItem, "id">[] = [
+  { label: "Client personally logs into the phone app", kind: "client_action", required: true },
+  { label: "Client selects the correct business/subaccount", kind: "client_action", required: true },
+  { label: "Client searches existing contacts to avoid duplicates", kind: "client_action", required: true },
+  { label: "Client manually adds an agreed contact", kind: "client_action", required: true },
+  { label: "Client finds the saved contact", kind: "client_action", required: true },
+  { label: "Client opens the review-request feature", kind: "client_action", required: true },
+  { label: "Client selects the agreed recipient and previews the message", kind: "client_action", required: true },
+  { label: "Client personally sends the Google review request", kind: "client_action", required: true, reviewSend: true },
+  { label: "Staff checks the recorded result", kind: "staff_check", required: true, reviewSend: true },
+  { label: "Required how-to guides supplied", kind: "staff_check", required: true },
+  { label: "Client questions answered and next steps agreed", kind: "staff_check", required: true },
+];

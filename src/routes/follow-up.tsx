@@ -1,7 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { useStore } from "../lib/store";
-import { unresolvedBlockers, isGuideOutstanding, guideLabel } from "../lib/completion";
+import { outstandingActions, type FollowUpAction } from "../lib/completion";
 
 export const Route = createFileRoute("/follow-up")({
   head: () => ({
@@ -15,33 +15,14 @@ export const Route = createFileRoute("/follow-up")({
   component: FollowUpPage,
 });
 
-interface Action {
-  clientId: string;
-  businessName: string;
-  owner: string;
-  kind: "blocker" | "guide";
-  summary: string;
-  nextAction?: string | undefined;
-  detail?: string | undefined;
-}
-
 function FollowUpPage() {
   const { state } = useStore();
   const [owner, setOwner] = useState("all");
   const guides = state.settings.guides;
 
-  const actions = useMemo<Action[]>(() => {
-    const out: Action[] = [];
-    for (const c of state.clients) {
-      for (const b of unresolvedBlockers(c)) {
-        out.push({ clientId: c.id, businessName: c.businessName, owner: b.owner, kind: "blocker", summary: b.summary, nextAction: b.nextAction });
-      }
-      for (const g of c.guides) {
-        if (isGuideOutstanding(g, guides)) {
-          out.push({ clientId: c.id, businessName: c.businessName, owner: c.assignedTeamMember, kind: "guide", summary: `Guide not sent: ${guideLabel(g, guides)}`, detail: "Guide link not added or not yet sent" });
-        }
-      }
-    }
+  const actions = useMemo<FollowUpAction[]>(() => {
+    const out: FollowUpAction[] = [];
+    for (const c of state.clients) out.push(...outstandingActions(c, guides));
     return out;
   }, [state, guides]);
 
@@ -53,7 +34,7 @@ function FollowUpPage() {
 
   const filtered = owner === "all" ? actions : actions.filter((a) => a.owner === owner);
   const byOwner = useMemo(() => {
-    const map = new Map<string, Action[]>();
+    const map = new Map<string, FollowUpAction[]>();
     filtered.forEach((a) => {
       const arr = map.get(a.owner) ?? [];
       arr.push(a);
@@ -65,40 +46,38 @@ function FollowUpPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="font-display text-2xl font-bold tracking-tight">Follow-up</h1>
-        <p className="mt-1 text-sm text-muted-foreground">Outstanding onboarding actions grouped by owner.</p>
+        <h1 className="font-display text-2xl font-bold tracking-tight text-foreground">Follow-up</h1>
+        <p className="mt-1 text-sm text-muted-foreground">Outstanding actions grouped by owner. "Needs follow-up" means an actual issue was recorded — not just that a call hasn't happened.</p>
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-xs text-muted-foreground">Filter by owner:</span>
-        <select value={owner} onChange={(e) => setOwner(e.target.value)} className="rounded-md border border-input bg-card px-3 py-2 text-sm">
+        <select value={owner} onChange={(e) => setOwner(e.target.value)} className="rounded-xl border border-border bg-card px-3 py-2 text-sm text-foreground outline-hidden focus:ring-2 focus:ring-accent cursor-pointer min-h-[40px]">
           <option value="all">All owners ({actions.length})</option>
           {owners.map((o) => <option key={o} value={o}>{o}</option>)}
         </select>
       </div>
 
       {byOwner.length === 0 && (
-        <div className="rounded-lg border border-border bg-card p-6 text-center text-sm text-muted-foreground">
-          No outstanding actions. 🎉
-        </div>
+        <div className="rounded-2xl border border-border bg-card p-6 text-center text-sm text-muted-foreground">No outstanding actions. 🎉</div>
       )}
 
       <div className="space-y-4">
         {byOwner.map(([name, items]) => (
-          <section key={name} className="rounded-lg border border-border bg-card p-4">
+          <section key={name} className="rounded-2xl border border-border bg-card p-4">
             <div className="flex items-center justify-between">
-              <h2 className="font-display text-lg font-semibold">{name}</h2>
+              <h2 className="font-display text-lg font-semibold text-foreground">{name}</h2>
               <span className="text-xs text-muted-foreground">{items.length} action(s)</span>
             </div>
             <div className="mt-3 space-y-2">
               {items.map((a, i) => (
-                <div key={i} className="rounded-md border border-border bg-background p-3 text-sm">
+                <div key={i} className="rounded-xl border border-border bg-background p-3 text-sm">
                   <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div className="font-medium">{a.summary}</div>
+                    <div className="font-medium text-foreground">{a.summary}</div>
                     <Link to="/clients/$clientId" params={{ clientId: a.clientId }} className="text-xs text-primary underline">Open {a.businessName}</Link>
                   </div>
                   {a.nextAction && <div className="mt-1 text-xs text-muted-foreground">Next action: {a.nextAction}</div>}
-                  {a.detail && <div className="mt-1 text-xs text-muted-foreground">{a.detail}</div>}
+                  {a.detail && <div className="mt-0.5 text-xs text-muted-foreground">{a.detail}</div>}
                 </div>
               ))}
             </div>

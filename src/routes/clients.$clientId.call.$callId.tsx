@@ -2,25 +2,22 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { useStore } from "../lib/store";
 import {
-  CONNECTION_STATUSES,
-  TASK_STATUSES,
-  STAFF_VERIFICATION_STATUSES,
-  REVIEW_OUTCOMES,
-  type ConnectionStatus,
-  type TaskStatus,
-  type StaffVerificationStatus,
-  type ReviewOutcome,
-} from "../lib/types";
+  deriveCallStatus,
+  callCompletionBlock,
+  callItemProgress,
+} from "../lib/completion";
+import { CALL_TYPE_LABEL } from "../lib/types";
+import { StatusBadge } from "../components/status-badge";
 import { buildCallSummary, copyToClipboard } from "../lib/call-summary";
-import { inputCls } from "../components/client-sections";
+import { CallItemRow, CallGuidesSection, inputCls } from "../components/client-sections";
 
 export const Route = createFileRoute("/clients/$clientId/call/$callId")({
   head: () => ({
     meta: [
-      { title: "Live Call Checklist — LSP Onboarding" },
-      { name: "description", content: "Focused checklist usable during a live onboarding call." },
-      { property: "og:title", content: "Live Call Checklist — LSP Onboarding" },
-      { property: "og:description", content: "Focused checklist usable during a live onboarding call." },
+      { title: "Live Call — LSP Onboarding Checklist" },
+      { name: "description", content: "Focused checklist usable during a live onboarding or connection call." },
+      { property: "og:title", content: "Live Call — LSP Onboarding Checklist" },
+      { property: "og:description", content: "Focused checklist usable during a live call." },
     ],
   }),
   component: CallSessionPage,
@@ -28,277 +25,137 @@ export const Route = createFileRoute("/clients/$clientId/call/$callId")({
 
 function CallSessionPage() {
   const { clientId, callId } = Route.useParams();
-  const {
-    state,
-    setAccessCheck,
-    setConnection,
-    setTask,
-    setStaffVerification,
-    updateCallSession,
-  } = useStore();
+  const { state, setCallItem, setCallGuide, updateCall, finishCall } = useStore();
   const client = state.clients.find((c) => c.id === clientId);
-  const session = client?.callSessions.find((s) => s.id === callId);
-  const [actor, setActor] = useState(state.settings.team[0]?.name ?? "Staff Member");
+  const call = client?.calls.find((c) => c.id === callId);
+  const [actor, setActor] = useState(call?.staffMember ?? state.settings.team[0]?.name ?? "Staff Member");
   const [copied, setCopied] = useState(false);
 
-  if (!client || !session) {
+  if (!client || !call) {
     return (
       <div className="space-y-4 rounded-2xl border border-border bg-card p-8 text-center">
         <p className="text-muted-foreground">Call session not found.</p>
-        <Link to="/clients/$clientId" params={{ clientId }} className="inline-flex rounded-xl bg-primary px-4 py-2 text-sm font-bold text-primary-foreground">
-          Return to Client Record
-        </Link>
+        <Link to="/clients/$clientId" params={{ clientId }} className="inline-flex rounded-xl bg-primary px-4 py-2 text-sm font-bold text-primary-foreground">Return to Client Record</Link>
       </div>
     );
   }
 
+  const guides = state.settings.guides;
+  const cs = deriveCallStatus(call, guides);
+  const block = callCompletionBlock(call, guides);
+  const prog = callItemProgress(call);
+  const team = state.settings.team;
+
   const onCopy = async () => {
-    await copyToClipboard(buildCallSummary(client, state.settings.guides));
+    await copyToClipboard(buildCallSummary(client, call, guides));
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
 
+  const clientActions = call.items.filter((i) => i.kind === "client_action");
+  const staffChecks = call.items.filter((i) => i.kind === "staff_check");
+
   return (
     <div className="space-y-6">
-      {/* Top Banner */}
+      {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/80 pb-4">
         <div>
-          <Link to="/clients/$clientId" params={{ clientId }} className="inline-flex items-center gap-1 text-xs font-semibold text-accent hover:underline">
-            ← Back to {client.businessName}
-          </Link>
+          <Link to="/clients/$clientId" params={{ clientId }} className="inline-flex items-center gap-1 text-xs font-semibold text-accent hover:underline">← Back to {client.businessName}</Link>
           <h1 className="mt-1 font-display text-2xl sm:text-3xl font-extrabold tracking-tight text-foreground">
-            Live Call Session — {session.date}
+            {CALL_TYPE_LABEL[call.type]} Call
           </h1>
-          <p className="text-xs sm:text-sm text-muted-foreground mt-0.5">
-            Client: <span className="font-semibold text-foreground">{client.clientName}</span> · Staff:{" "}
-            <span className="font-semibold text-foreground">{session.staffMember}</span>
+          <p className="mt-0.5 text-xs sm:text-sm text-muted-foreground">
+            <span className="font-semibold text-foreground">{client.businessName}</span> · {client.clientName} · {call.date}
+            {client.accountContext && <> · {client.accountContext}</>}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <div className="flex items-center gap-2 rounded-xl border border-border bg-card px-3 py-1.5">
-            <label className="text-xs font-semibold text-muted-foreground">Acting Staff:</label>
-            <select
-              value={actor}
-              onChange={(e) => setActor(e.target.value)}
-              className="bg-transparent text-xs font-bold text-foreground outline-hidden cursor-pointer"
-            >
-              {state.settings.team.map((t) => (
-                <option key={t.id} value={t.name} className="bg-card text-foreground">{t.name}</option>
-              ))}
+            <label className="text-xs font-semibold text-muted-foreground">Observing Staff:</label>
+            <select value={actor} onChange={(e) => { setActor(e.target.value); updateCall(client.id, call.id, { staffMember: e.target.value }, e.target.value); }} className="bg-transparent text-xs font-bold text-foreground outline-hidden cursor-pointer">
+              {team.map((t) => <option key={t.id} value={t.name} className="bg-card text-foreground">{t.name}</option>)}
             </select>
           </div>
-          <button
-            onClick={onCopy}
-            className="inline-flex items-center gap-1.5 rounded-xl bg-primary px-4 py-2 text-xs sm:text-sm font-bold text-primary-foreground shadow-md shadow-primary/20 hover:bg-primary/90 cursor-pointer"
-          >
-            {copied ? "✓ Copied!" : "📋 Copy Call Summary"}
-          </button>
+          <StatusBadge status={cs} />
         </div>
       </div>
 
-      {/* Session Notes */}
-      <div className="rounded-2xl border border-border bg-card p-5">
-        <label className="block">
-          <span className="mb-1 block text-xs font-bold uppercase tracking-wider text-muted-foreground">
-            Call Session Notes &amp; Observations
-          </span>
-          <textarea
-            className={inputCls}
-            rows={3}
-            placeholder="Record live call notes here..."
-            defaultValue={session.notes ?? ""}
-            onBlur={(e) => updateCallSession(client.id, session.id, { notes: e.target.value }, actor)}
-          />
-        </label>
-      </div>
-
-      {/* A. Phone-App Access */}
-      <section className="rounded-2xl border border-border bg-card p-5 space-y-3">
-        <h2 className="font-display text-lg font-bold text-foreground">A. Phone-App Access Checks</h2>
-        <div className="space-y-2">
-          {client.accessChecks.map((a) => (
-            <div key={a.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border bg-background p-3.5">
-              <label className="flex items-center gap-2.5 text-xs font-bold cursor-pointer text-foreground">
-                <input
-                  type="checkbox"
-                  checked={a.checked}
-                  onChange={(e) =>
-                    setAccessCheck(
-                      client.id,
-                      a.id,
-                      {
-                        checked: e.target.checked,
-                        verifier: e.target.checked ? actor : undefined,
-                        verifiedAt: e.target.checked ? new Date().toISOString() : undefined,
-                      },
-                      actor,
-                      e.target.checked ? "Verified during call" : "Unverified",
-                    )
-                  }
-                  className="h-4 w-4 rounded border-border accent-primary cursor-pointer"
-                />
-                <span>{a.label}</span>
-              </label>
-              <span className={`text-xs font-bold px-2.5 py-0.5 rounded ${a.checked ? "bg-chart-1/20 text-chart-1" : "bg-secondary text-muted-foreground"}`}>
-                {a.checked ? "Verified" : "Pending"}
-              </span>
-            </div>
-          ))}
+      {/* Completion banner */}
+      {!block.ok ? (
+        <div className="rounded-2xl border-2 border-destructive/50 bg-destructive/10 p-4 text-sm">
+          <div className="flex items-center gap-2 font-bold text-destructive"><span className="h-2 w-2 rounded-full bg-destructive" />Call not complete ({block.reasons.length} issue{block.reasons.length === 1 ? "" : "s"})</div>
+          <ul className="mt-2 list-disc space-y-1 pl-5 text-xs text-destructive/90">{block.reasons.map((r, i) => <li key={i}>{r}</li>)}</ul>
         </div>
-      </section>
+      ) : (
+        <div className="rounded-2xl border-2 border-chart-1/50 bg-chart-1/10 p-4 text-sm font-bold text-chart-1 flex items-center gap-2"><span>✓</span><span>Checklist complete — all required items satisfied, no unresolved issues.</span></div>
+      )}
 
-      {/* B. Connections */}
-      <section className="rounded-2xl border border-border bg-card p-5 space-y-3">
-        <h2 className="font-display text-lg font-bold text-foreground">B. Integrations &amp; Connections</h2>
-        <p className="text-xs text-muted-foreground">A connected integration does NOT automatically complete any practical task.</p>
-        <div className="space-y-2">
-          {client.connections.map((c) => (
-            <div key={c.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border bg-background p-3.5">
-              <div className="flex items-center gap-2 text-xs font-bold text-foreground">
-                <span>{c.label}</span>
-                {c.required && <span className="rounded bg-primary/20 px-1.5 py-0.5 text-[10px] text-primary uppercase">Req</span>}
-              </div>
-              <select
-                className={inputCls + " w-44 text-xs font-semibold"}
-                value={c.status}
-                onChange={(e) =>
-                  setConnection(
-                    client.id,
-                    c.id,
-                    {
-                      status: e.target.value as ConnectionStatus,
-                      verifiedAt: e.target.value === "connected" ? (c.verifiedAt ?? new Date().toISOString()) : c.verifiedAt,
-                      verifier: e.target.value === "connected" ? (c.verifier ?? actor) : c.verifier,
-                    },
-                    actor,
-                  )
-                }
-              >
-                {CONNECTION_STATUSES.map((s) => (
-                  <option key={s.value} value={s.value}>{s.label}</option>
-                ))}
-              </select>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      {/* C. Client-Led Practice */}
-      <section className="rounded-2xl border border-border bg-card p-5 space-y-3">
-        <h2 className="font-display text-lg font-bold text-foreground">C. Client-Led Practical Tasks</h2>
-        <p className="text-xs text-muted-foreground">"Demonstrated by staff" does NOT count as client completion.</p>
-        <div className="space-y-3">
-          {client.tasks.map((t) => {
-            const isReviewSend = t.id.includes("-5") || t.label.toLowerCase().includes("sends the google review");
-            return (
-              <div key={t.id} className="rounded-xl border border-border bg-background p-3.5 space-y-2">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <span className="font-bold text-xs sm:text-sm text-foreground">{t.label}</span>
-                  <select
-                    className={inputCls + " w-52 text-xs font-semibold"}
-                    value={t.status}
-                    onChange={(e) => {
-                      const st = e.target.value as TaskStatus;
-                      setTask(
-                        client.id,
-                        t.id,
-                        {
-                          status: st,
-                          completedBy: st === "client_completed" ? (t.completedBy ?? actor) : t.completedBy,
-                          completedAt: st === "client_completed" ? (t.completedAt ?? new Date().toISOString()) : t.completedAt,
-                        },
-                        actor,
-                      );
-                    }}
-                  >
-                    {TASK_STATUSES.map((s) => (
-                      <option key={s.value} value={s.value}>{s.label}</option>
-                    ))}
-                  </select>
-                </div>
-
-                {t.status === "client_completed" && (
-                  <div className="space-y-2 pt-2 border-t border-border/60 text-xs">
-                    <label className="flex items-center gap-2 font-bold cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={!!t.clientConfirmed}
-                        onChange={(e) => setTask(client.id, t.id, { clientConfirmed: e.target.checked }, actor)}
-                        className="h-4 w-4 rounded border-border accent-primary"
-                      />
-                      <span>Confirmed: Client personally executed this task during call</span>
-                    </label>
-                    <textarea
-                      className={inputCls}
-                      rows={1}
-                      placeholder="Evidence note observed during live call..."
-                      defaultValue={t.evidence ?? ""}
-                      onBlur={(e) => setTask(client.id, t.id, { evidence: e.target.value, completedBy: actor, completedAt: new Date().toISOString() }, actor)}
-                    />
-                    {isReviewSend && (
-                      <div className="flex items-center gap-2">
-                        <span className="text-muted-foreground font-semibold">Review Outcome:</span>
-                        <select
-                          className={inputCls + " w-44"}
-                          value={t.reviewOutcome ?? "sent"}
-                          onChange={(e) => setTask(client.id, t.id, { reviewOutcome: e.target.value as ReviewOutcome }, actor)}
-                        >
-                          {REVIEW_OUTCOMES.map((r) => (
-                            <option key={r.value} value={r.value}>{r.label}</option>
-                          ))}
-                        </select>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      </section>
-
-      {/* D. Staff Verification */}
-      <section className="rounded-2xl border border-border bg-card p-5 space-y-3">
-        <h2 className="font-display text-lg font-bold text-foreground">D. Staff Verification</h2>
-        <div className="rounded-xl border border-border bg-background p-3.5 space-y-2 text-xs">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <span className="font-bold text-foreground">{client.staffVerification.label}</span>
-            <select
-              className={inputCls + " w-48 font-semibold"}
-              value={client.staffVerification.status}
-              onChange={(e) =>
-                setStaffVerification(
-                  client.id,
-                  {
-                    status: e.target.value as StaffVerificationStatus,
-                    verifier: e.target.value === "verified" ? actor : client.staffVerification.verifier,
-                    verifiedAt: e.target.value === "verified" ? new Date().toISOString() : client.staffVerification.verifiedAt,
-                  },
-                  actor,
-                )
-              }
-            >
-              {STAFF_VERIFICATION_STATUSES.map((s) => (
-                <option key={s.value} value={s.value}>{s.label}</option>
-              ))}
-            </select>
+      {/* Client-led practical tasks */}
+      {clientActions.length > 0 && (
+        <section className="rounded-2xl border border-border bg-card p-5">
+          <h2 className="font-display text-lg font-bold text-foreground">Client-Led Practical Tasks</h2>
+          <p className="mt-1 text-xs text-muted-foreground">"Client did it" = staff observed the client personally perform it. A staff demonstration does NOT count. Staff + timestamp recorded automatically.</p>
+          <div className="mt-3 space-y-3">
+            {clientActions.map((it) => (
+              <CallItemRow key={it.id} item={it} actor={actor} onSet={(patch, reason) => setCallItem(client.id, call.id, it.id, patch, actor, reason)} />
+            ))}
           </div>
-          <textarea
-            className={inputCls}
-            rows={2}
-            placeholder="Result note (e.g. Verified in conversations tab: review SMS sent, receipt confirmed)..."
-            defaultValue={client.staffVerification.resultNote ?? ""}
-            onBlur={(e) => setStaffVerification(client.id, { resultNote: e.target.value, verifier: actor, verifiedAt: new Date().toISOString() }, actor)}
-          />
+        </section>
+      )}
+
+      {/* Staff checks */}
+      {staffChecks.length > 0 && (
+        <section className="rounded-2xl border border-border bg-card p-5">
+          <h2 className="font-display text-lg font-bold text-foreground">Staff Checks</h2>
+          <p className="mt-1 text-xs text-muted-foreground">Staff-only items use Done (not "Client did it"). These record verification only — they do not perform integrations or request credentials.</p>
+          <div className="mt-3 space-y-3">
+            {staffChecks.map((it) => (
+              <CallItemRow key={it.id} item={it} actor={actor} onSet={(patch, reason) => setCallItem(client.id, call.id, it.id, patch, actor, reason)} />
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* Guides */}
+      <CallGuidesSection call={call} actor={actor} guides={guides} onSetGuide={(guideId, patch, reason) => setCallGuide(client.id, call.id, guideId, patch, actor, reason)} />
+
+      {/* Notes + follow-up */}
+      <section className="rounded-2xl border border-border bg-card p-5 space-y-3">
+        <h2 className="font-display text-lg font-bold text-foreground">Call Notes &amp; Follow-up</h2>
+        <div>
+          <span className="mb-1 block text-xs font-semibold text-muted-foreground">Call Notes</span>
+          <textarea className={inputCls} rows={3} placeholder="Short call notes..." defaultValue={call.notes ?? ""} onBlur={(e) => updateCall(client.id, call.id, { notes: e.target.value }, actor)} />
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2 text-xs">
+          <div>
+            <span className="mb-1 block text-xs font-semibold text-muted-foreground">Follow-up Action</span>
+            <input className={inputCls} placeholder="What needs to happen next..." defaultValue={call.followUpAction ?? ""} onBlur={(e) => updateCall(client.id, call.id, { followUpAction: e.target.value }, actor)} />
+          </div>
+          <div>
+            <span className="mb-1 block text-xs font-semibold text-muted-foreground">Follow-up Date</span>
+            <input type="date" className={inputCls} defaultValue={call.followUpDate ?? ""} onChange={(e) => updateCall(client.id, call.id, { followUpDate: e.target.value || undefined }, actor)} />
+          </div>
         </div>
       </section>
 
-      <div className="flex justify-end gap-3 pt-2">
-        <Link to="/clients/$clientId" params={{ clientId }} className="rounded-xl border border-border bg-card px-4 py-2 text-xs font-bold text-foreground hover:bg-secondary">
-          Done &amp; Return to Client Detail
-        </Link>
-        <button onClick={onCopy} className="rounded-xl bg-primary px-4 py-2 text-xs font-bold text-primary-foreground shadow-md shadow-primary/20">
-          {copied ? "✓ Summary Copied!" : "📋 Copy Call Summary"}
+      {/* Summary */}
+      <section className="rounded-2xl border border-border bg-card p-5">
+        <div className="flex items-center justify-between mb-2">
+          <div>
+            <h2 className="font-display text-lg font-bold text-foreground">Call Summary</h2>
+            <p className="text-xs text-muted-foreground">Readable guide names. Copying never sends anything.</p>
+          </div>
+          <button onClick={onCopy} className="rounded-xl bg-primary px-4 py-2 text-xs font-bold text-primary-foreground hover:bg-primary/90 cursor-pointer min-h-[40px]">{copied ? "✓ Copied!" : "📋 Copy Summary"}</button>
+        </div>
+        <pre className="mt-3 max-h-80 overflow-auto whitespace-pre-wrap rounded-xl border border-border/80 bg-background/80 p-4 font-mono text-xs text-foreground">{buildCallSummary(client, call, guides)}</pre>
+      </section>
+
+      {/* Finish */}
+      <div className="flex flex-wrap justify-end gap-3 pt-2">
+        <Link to="/clients/$clientId" params={{ clientId }} className="rounded-xl border border-border bg-card px-4 py-2 text-xs font-bold text-foreground hover:bg-secondary min-h-[40px] inline-flex items-center">← Back to Client</Link>
+        <button onClick={() => updateCall(client.id, call.id, { followUpAction: call.followUpAction, followUpDate: call.followUpDate }, actor)} className="rounded-xl border border-border bg-card px-4 py-2 text-xs font-bold text-foreground hover:bg-secondary min-h-[40px]">Save (in-memory)</button>
+        <button onClick={() => finishCall(client.id, call.id, { followUpAction: call.followUpAction, followUpDate: call.followUpDate }, actor)} className="rounded-xl bg-primary px-5 py-2 text-xs font-bold text-primary-foreground shadow-md shadow-primary/20 hover:bg-primary/90 min-h-[40px]">
+          {block.ok ? "Finish Call ✓" : "Finish Call (with follow-up)"}
         </button>
       </div>
     </div>

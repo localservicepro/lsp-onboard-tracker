@@ -1,37 +1,32 @@
-// Completion + progress logic for the LSP Onboarding Checklist.
+// Completion + progress logic for the LSP Onboarding Checklist (call-based model).
 //
-// Core rules enforced:
-//  - Access checks must be completed (logged into phone app + selected correct business).
-//  - Every required connection must be verified as Connected, or explicitly
-//    marked Not applicable with a reason and reviewer acknowledgement.
-//  - Optional connections must be either Connected or explicitly marked (not left as Not checked if completing).
-//  - All required client practical tasks completed by the client with evidence,
-//    staff member and timestamp. Staff demonstration does NOT count.
-//  - Staff checks recorded result is a SEPARATE staff verification item requiring
-//    staff verifier, timestamp and result note.
-//  - No unresolved blockers.
-//  - "Sent" and "Receipt confirmed" remain distinct.
+// Core rules:
+//  - Untouched (not_checked) items are NOT blockers just because a call hasn't
+//    happened. Only an actual recorded issue (needs_help) means "needs follow-up".
+//  - "Client did it" (client_action done) means staff observed the client
+//    personally perform the action AND recorded a non-empty evidence note,
+//    staff identity and timestamp. A staff demonstration does NOT count.
+//  - Staff-only items use Done (not "Client did it").
+//  - "Sent" and "Receipt confirmed" stay distinct review outcomes.
 //  - A missing guide (no URL) cannot count as Sent. A verbal walkthrough is a
-//    separate activity and never counts as a guide being sent.
-//  - Progress denominators exclude approved N/A items.
+//    separate activity and never counts as guide delivery.
+//  - Not applicable requires a reason + reviewer acknowledgement.
 
 import type {
   Client,
-  AccessCheckItem,
-  ConnectionItem,
-  TaskItem,
-  StaffVerificationItem,
-  Blocker,
-  GuideSentRecord,
+  Call,
+  CallItem,
+  CallStatus,
   GuideLink,
-  OverallStatus,
+  CallGuideRecord,
 } from "./types";
 
 export interface Progress {
   done: number;
   total: number;
-  pct: number; // 0..100
+  pct: number;
   exemptCount?: number;
+  needsHelpCount?: number;
 }
 
 export interface CompletionBlock {
@@ -39,256 +34,269 @@ export interface CompletionBlock {
   reasons: string[];
 }
 
-export function isAccessDone(a: AccessCheckItem): boolean {
-  return a.checked && !!a.verifier?.trim() && !!a.verifiedAt;
-}
+// ---- Item-level ----
 
-export function accessProgress(client: Client): Progress {
-  const items = client.accessChecks;
-  const done = items.filter(isAccessDone).length;
-  const total = items.length;
-  return { done, total, pct: total === 0 ? 0 : Math.round((done / total) * 100) };
-}
-
-export function isConnectionExempt(c: ConnectionItem): boolean {
-  return c.status === "not_applicable" && !!c.notApplicableReason?.trim() && !!c.acknowledgedByReviewer;
-}
-
-export function isConnectionSatisfied(c: ConnectionItem): boolean {
-  if (c.status === "connected") return !!c.verifier?.trim() && !!c.verifiedAt;
-  if (c.status === "not_applicable") return isConnectionExempt(c);
-  return false;
-}
-
-export function connectionProgress(client: Client): Progress {
-  // Exclude approved N/A from denominator, count connected as done
-  const applicable = client.connections.filter((c) => !isConnectionExempt(c));
-  const done = client.connections.filter((c) => c.status === "connected" && !!c.verifier?.trim() && !!c.verifiedAt).length;
-  const exemptCount = client.connections.filter(isConnectionExempt).length;
-  const total = applicable.length;
-  return {
-    done,
-    total,
-    pct: total === 0 ? (exemptCount > 0 ? 100 : 0) : Math.round((done / total) * 100),
-    exemptCount,
-  };
-}
-
-export function isTaskExempt(t: TaskItem): boolean {
-  return t.status === "not_applicable" && !!t.notApplicableReason?.trim() && !!t.acknowledgedByReviewer;
-}
-
-export function taskCompletionProofValid(t: TaskItem): boolean {
-  if (t.status !== "client_completed") return false;
-  if (!t.clientConfirmed) return false;
-  if (!t.evidence?.trim()) return false;
-  if (!t.completedBy?.trim()) return false;
-  if (!t.completedAt) return false;
+export function isItemDone(item: CallItem): boolean {
+  if (item.status !== "done") return false;
+  if (!item.completedBy?.trim()) return false;
+  if (!item.completedAt) return false;
+  if (item.kind === "client_action") {
+    // Client practical task: requires a non-empty evidence/result note.
+    return !!item.evidence?.trim();
+  }
+  // staff_check: a brief verification note is allowed but optional; verifier + timestamp required.
   return true;
 }
 
-export function isTaskSatisfied(t: TaskItem): boolean {
-  if (t.status === "client_completed") return taskCompletionProofValid(t);
-  if (t.status === "not_applicable") return isTaskExempt(t);
+export function isItemExempt(item: CallItem): boolean {
+  return (
+    item.status === "not_applicable" &&
+    !!item.notApplicableReason?.trim() &&
+    !!item.acknowledgedByReviewer
+  );
+}
+
+export function isItemSatisfied(item: CallItem): boolean {
+  if (item.status === "done") return isItemDone(item);
+  if (item.status === "not_applicable") return isItemExempt(item);
   return false;
 }
 
-export function practiceProgress(client: Client): Progress {
-  const applicable = client.tasks.filter((t) => !isTaskExempt(t));
-  const done = client.tasks.filter((t) => t.status === "client_completed" && taskCompletionProofValid(t)).length;
-  const exemptCount = client.tasks.filter(isTaskExempt).length;
+export function itemNeedsFollowUp(item: CallItem): boolean {
+  return item.status === "needs_help";
+}
+
+export function itemStatusLabel(item: CallItem): string {
+  if (item.status === "done") return item.kind === "client_action" ? "Client did it" : "Done";
+  if (item.status === "needs_help") return "Needs help";
+  if (item.status === "not_applicable") return "Not applicable";
+  return "Not checked";
+}
+
+// ---- Call-level ----
+
+export function callItemProgress(call: Call): Progress {
+  const applicable = call.items.filter((i) => !isItemExempt(i));
+  const done = call.items.filter((i) => i.status === "done" && isItemDone(i)).length;
+  const exemptCount = call.items.filter(isItemExempt).length;
+  const needsHelpCount = call.items.filter(itemNeedsFollowUp).length;
   const total = applicable.length;
   return {
     done,
     total,
     pct: total === 0 ? (exemptCount > 0 ? 100 : 0) : Math.round((done / total) * 100),
     exemptCount,
+    needsHelpCount,
   };
 }
 
-export function isStaffVerificationDone(sv: StaffVerificationItem): boolean {
-  if (sv.status === "verified") {
-    return !!sv.verifier?.trim() && !!sv.verifiedAt && !!sv.resultNote?.trim();
+export function callCompletionBlock(call: Call, guides: GuideLink[] = []): CompletionBlock {
+  const reasons: string[] = [];
+
+  // Required items not satisfied (done with proof, or N/A with reason + ack).
+  const unsatisfiedRequired = call.items.filter((i) => i.required && !isItemSatisfied(i));
+  if (unsatisfiedRequired.length > 0) {
+    const notChecked = unsatisfiedRequired.filter((i) => i.status === "not_checked").length;
+    const needsHelp = unsatisfiedRequired.filter((i) => i.status === "needs_help").length;
+    reasons.push(
+      `${unsatisfiedRequired.length} required checklist item(s) not completed` +
+        (needsHelp > 0 ? ` (${needsHelp} need help)` : "") +
+        (notChecked > 0 ? ` (${notChecked} still not checked)` : ""),
+    );
   }
-  if (sv.status === "not_applicable") {
-    return !!sv.notApplicableReason?.trim() && !!sv.acknowledgedByReviewer;
+
+  // Invalid N/A (no reason or no reviewer acknowledgement).
+  const invalidNa = call.items.filter(
+    (i) => i.status === "not_applicable" && (!i.notApplicableReason?.trim() || !i.acknowledgedByReviewer),
+  );
+  if (invalidNa.length > 0) {
+    reasons.push(`${invalidNa.length} item(s) marked Not applicable without a reason or reviewer acknowledgement`);
   }
-  return false;
+
+  // Needs-help items are actual issues — they block completion.
+  const needsHelp = call.items.filter(itemNeedsFollowUp);
+  if (needsHelp.length > 0) {
+    reasons.push(`${needsHelp.length} item(s) need help (unresolved issues)`);
+  }
+
+  // Guides: a guide with a configured URL that is outstanding (not sent-valid,
+  // not exempted) blocks completion. A missing-URL guide cannot be sent but is
+  // surfaced as outstanding follow-up rather than a hard call blocker.
+  const outstandingUrlGuides = call.guides.filter(
+    (g) => guideHasUrl(g, guides) && !isGuideSentValid(g, guides) && !isGuideExempt(g),
+  );
+  if (outstandingUrlGuides.length > 0) {
+    reasons.push(
+      `${outstandingUrlGuides.length} guide(s) with a configured link not sent or exempted (e.g. ${outstandingUrlGuides.map((g) => guideLabel(g, guides)).slice(0, 2).join(", ")})`,
+    );
+  }
+  // Guides marked sent but invalid (no URL / "Guide link not added" / missing details).
+  const invalidSent = call.guides.filter((g) => g.sent && !isGuideSentValid(g, guides));
+  if (invalidSent.length > 0) {
+    reasons.push(`${invalidSent.length} guide(s) marked Sent without a valid supplied URL/version (verbal walkthrough is not a sent guide)`);
+  }
+
+  return { ok: reasons.length === 0, reasons };
 }
 
-export function staffVerificationProgress(client: Client): Progress {
-  const sv = client.staffVerification;
-  const isExempt = sv.status === "not_applicable" && !!sv.notApplicableReason?.trim() && !!sv.acknowledgedByReviewer;
-  const total = isExempt ? 0 : 1;
-  const done = isStaffVerificationDone(sv) && !isExempt ? 1 : 0;
-  return {
-    done,
-    total,
-    pct: isStaffVerificationDone(sv) ? 100 : 0,
-    exemptCount: isExempt ? 1 : 0,
-  };
+export function deriveCallStatus(call: Call, guides: GuideLink[] = []): CallStatus {
+  // Any needs_help item (an actual recorded issue) → needs follow-up.
+  if (call.items.some(itemNeedsFollowUp)) return "needs_followup";
+  // Invalid sent guides → needs follow-up (a real issue, not just unfinished).
+  if (call.guides.some((g) => g.sent && !isGuideSentValid(g, guides))) return "needs_followup";
+
+  const block = callCompletionBlock(call, guides);
+  if (block.ok) return "completed";
+
+  const touched =
+    call.items.some((i) => i.status !== "not_checked") ||
+    call.guides.some((g) => g.sent || g.walkthroughProvided) ||
+    !!call.notes?.trim() ||
+    !!call.finishedAt;
+  return touched ? "in_progress" : "not_started";
 }
 
-// ---- Guide-sent validation ----
-//
-// "Guide sent" requires a valid supplied guide URL or identifiable document
-// version, a date/time, a delivery channel and a staff member. A verbal
-// walkthrough is a SEPARATE activity and never counts as a guide being sent.
-// A guide with no configured URL cannot be marked Sent (it shows "Guide link
-// not added"). It may be exempted only with a reason + reviewer acknowledgement.
+// ---- Client-level ----
 
-export function guideLabel(g: GuideSentRecord, guides: GuideLink[]): string {
+export function deriveClientStatus(client: Client, guides: GuideLink[] = []): CallStatus {
+  const calls = client.calls;
+  if (calls.length === 0) return "not_started";
+  if (calls.some((c) => deriveCallStatus(c, guides) === "needs_followup")) return "needs_followup";
+
+  const connDone = calls.some((c) => c.type === "connection" && deriveCallStatus(c, guides) === "completed");
+  const onbDone = calls.some((c) => c.type === "onboarding" && deriveCallStatus(c, guides) === "completed");
+  if (connDone && onbDone) return "completed";
+
+  if (calls.every((c) => deriveCallStatus(c, guides) === "not_started")) return "not_started";
+  return "in_progress";
+}
+
+// Next call type: use the planned one, else infer the missing required type.
+export function nextCallTypeForClient(client: Client): import("./types").CallType {
+  if (client.nextCallType) return client.nextCallType;
+  const hasConn = client.calls.some((c) => c.type === "connection");
+  return hasConn ? "onboarding" : "connection";
+}
+
+// The latest unfinished call of a given type (for "Continue"), or null.
+export function unfinishedCallOfType(client: Client, type: import("./types").CallType): Call | null {
+  const of = client.calls.filter((c) => c.type === type && !c.finishedAt);
+  if (of.length === 0) return null;
+  const sorted = of.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  return sorted[0] ?? null;
+}
+
+// ---- Guides ----
+
+export function guideLabel(g: CallGuideRecord, guides: GuideLink[]): string {
   return guides.find((d) => d.id === g.guideId)?.label ?? g.guideId;
 }
 
-export function guideHasUrl(g: GuideSentRecord, guides: GuideLink[]): boolean {
+export function guideHasUrl(g: CallGuideRecord, guides: GuideLink[]): boolean {
   return !!guides.find((d) => d.id === g.guideId)?.url?.trim();
 }
 
-export function isGuideSentValid(g: GuideSentRecord, guides: GuideLink[]): boolean {
+export function guideUrl(g: CallGuideRecord, guides: GuideLink[]): string | undefined {
+  return guides.find((d) => d.id === g.guideId)?.url;
+}
+
+export function isGuideSentValid(g: CallGuideRecord, guides: GuideLink[]): boolean {
   if (!g.sent) return false;
   if (!g.sentAt) return false;
   if (!g.channel) return false;
   if (!g.sentBy?.trim()) return false;
-  // A valid supplied URL/version is mandatory — never "Guide link not added".
   const supplied = g.suppliedUrlOrVersion?.trim();
   if (!supplied) return false;
   if (/guide link not added/i.test(supplied)) return false;
-  // If the guide has no configured URL, it cannot be sent at all.
+  // A guide with no configured URL cannot be sent at all.
   if (!guideHasUrl(g, guides)) return false;
   return true;
 }
 
-export function isGuideExempt(g: GuideSentRecord): boolean {
-  return (
-    !g.sent &&
-    !!g.notApplicableReason?.trim() &&
-    !!g.acknowledgedByReviewer
-  );
+export function isGuideExempt(g: CallGuideRecord): boolean {
+  return !g.sent && !!g.notApplicableReason?.trim() && !!g.acknowledgedByReviewer;
 }
 
-export function isGuideOutstanding(g: GuideSentRecord, guides: GuideLink[]): boolean {
-  // Outstanding = not sent and not exempted. Missing-URL guides stay outstanding.
+export function isGuideOutstanding(g: CallGuideRecord, guides: GuideLink[]): boolean {
   if (g.sent) return false;
   if (isGuideExempt(g)) return false;
   void guides;
   return true;
 }
 
-export function unresolvedBlockers(client: Client): Blocker[] {
-  return client.blockers.filter((b) => !b.resolved);
+// ---- Follow-up actions (by owner) ----
+
+export interface FollowUpAction {
+  clientId: string;
+  callId: string;
+  businessName: string;
+  owner: string;
+  kind: "item" | "guide";
+  summary: string;
+  nextAction?: string | undefined;
+  detail?: string | undefined;
 }
 
-export function followupProgress(client: Client, guides: GuideLink[]): Progress {
-  const blockers = client.blockers;
-  const guideDone = client.guides.filter((g) => isGuideSentValid(g, guides)).length;
-  const guideExempt = client.guides.filter((g) => isGuideExempt(g)).length;
-  const guideApplicable = client.guides.filter((g) => !isGuideExempt(g)).length;
-  const blockerDone = blockers.filter((b) => b.resolved).length;
-  const total = blockers.length + guideApplicable;
-  const done = blockerDone + guideDone;
-  return {
-    done,
-    total,
-    pct: total === 0 ? (guideExempt > 0 ? 100 : 0) : Math.round((done / total) * 100),
-    exemptCount: guideExempt,
-  };
-}
-
-export function completionBlock(client: Client, guides: GuideLink[] = []): CompletionBlock {
-  const reasons: string[] = [];
-
-  // 1. Access checks
-  const incompleteAccess = client.accessChecks.filter((a) => !isAccessDone(a));
-  if (incompleteAccess.length > 0) {
-    reasons.push(`${incompleteAccess.length} required phone-app access check(s) not completed`);
-  }
-
-  // 2. Connections: every required connection must be verified as connected or explicitly N/A with reason + ack
-  const unverifiedConnections = client.connections.filter((c) => {
-    if (c.required) {
-      return !isConnectionSatisfied(c);
+export function outstandingActions(client: Client, guides: GuideLink[]): FollowUpAction[] {
+  const out: FollowUpAction[] = [];
+  for (const call of client.calls) {
+    for (const item of call.items) {
+      if (itemNeedsFollowUp(item)) {
+        out.push({
+          clientId: client.id,
+          callId: call.id,
+          businessName: client.businessName,
+          owner: item.completedBy?.trim() || client.assignedTeamMember,
+          kind: "item",
+          summary: `${item.label} — ${item.issue?.trim() || "needs help"}`,
+          nextAction: item.nextAction,
+          detail: call.type,
+        });
+      }
     }
-    // Optional connections: if left as not_checked or blocked
-    return c.status === "blocked" || c.status === "not_checked";
-  });
-  if (unverifiedConnections.length > 0) {
-    reasons.push(`${unverifiedConnections.length} connection(s) unverified or blocked (e.g. ${unverifiedConnections.map((c) => c.label).slice(0, 2).join(", ")})`);
+    for (const g of call.guides) {
+      if (isGuideOutstanding(g, guides)) {
+        out.push({
+          clientId: client.id,
+          callId: call.id,
+          businessName: client.businessName,
+          owner: client.assignedTeamMember,
+          kind: "guide",
+          summary: `Guide not sent: ${guideLabel(g, guides)}`,
+          detail: guideHasUrl(g, guides) ? "Configured link not yet sent" : "Guide link not added",
+        });
+      }
+    }
   }
-
-  // Check N/A connections without reason or acknowledgement
-  const invalidNaConnections = client.connections.filter(
-    (c) => c.status === "not_applicable" && (!c.notApplicableReason?.trim() || !c.acknowledgedByReviewer),
-  );
-  if (invalidNaConnections.length > 0) {
-    reasons.push(`${invalidNaConnections.length} connection(s) marked Not applicable without valid reason or reviewer acknowledgement`);
-  }
-
-  // 3. Client practical tasks
-  const incompleteTasks = client.tasks.filter((t) => !isTaskSatisfied(t));
-  if (incompleteTasks.length > 0) {
-    const demonstratedCount = incompleteTasks.filter((t) => t.status === "demonstrated_by_staff").length;
-    reasons.push(
-      `${incompleteTasks.length} client practical task(s) not yet completed` +
-        (demonstratedCount > 0 ? ` (${demonstratedCount} only demonstrated by staff — staff demo does NOT count)` : ""),
-    );
-  }
-
-  // 4. Staff verification
-  if (!isStaffVerificationDone(client.staffVerification)) {
-    reasons.push("Staff verification of recorded result is not yet verified with evidence note");
-  }
-
-  // 5. Unresolved blockers
-  const blockers = unresolvedBlockers(client);
-  if (blockers.length > 0) {
-    reasons.push(`${blockers.length} unresolved blocker(s)`);
-  }
-
-  // 6. Outstanding required documentation (guides) without an approved exemption
-  const outstandingGuides = client.guides.filter((g) => isGuideOutstanding(g, guides));
-  if (outstandingGuides.length > 0) {
-    reasons.push(`${outstandingGuides.length} required guide(s) not sent or exempted (e.g. ${outstandingGuides.map((g) => guideLabel(g, guides)).slice(0, 2).join(", ")})`);
-  }
-  // Guides marked sent but invalid (e.g. no URL / "Guide link not added")
-  const invalidSentGuides = client.guides.filter((g) => g.sent && !isGuideSentValid(g, guides));
-  if (invalidSentGuides.length > 0) {
-    reasons.push(`${invalidSentGuides.length} guide(s) marked Sent without a valid supplied URL/version (verbal walkthrough is not a sent guide)`);
-  }
-
-  return { ok: reasons.length === 0, reasons };
+  return out;
 }
 
-export function derivedOverallStatus(client: Client, guides: GuideLink[] = []): OverallStatus {
-  // If there are unresolved blockers, status is blocked
-  if (unresolvedBlockers(client).length > 0) return "blocked";
+// ---- Theming helpers ----
 
-  const block = completionBlock(client, guides);
-  if (block.ok) {
-    return "completed";
-  }
-
-  const access = accessProgress(client);
-  const conn = connectionProgress(client);
-  const prac = practiceProgress(client);
-
-  if (access.done === 0 && conn.done === 0 && prac.done === 0 && client.callSessions.length === 0) {
-    return "not_started";
-  }
-
-  return "in_progress";
-}
-
-export function statusColor(status: OverallStatus): string {
+export function statusColor(status: CallStatus): string {
   switch (status) {
     case "completed":
       return "var(--color-chart-1)";
     case "in_progress":
       return "var(--color-primary)";
-    case "blocked":
+    case "needs_followup":
       return "var(--color-destructive)";
     case "not_started":
     default:
       return "var(--color-muted-foreground)";
+  }
+}
+
+export function statusLabel(status: CallStatus): string {
+  switch (status) {
+    case "completed":
+      return "Completed";
+    case "in_progress":
+      return "In progress";
+    case "needs_followup":
+      return "Needs follow-up";
+    case "not_started":
+    default:
+      return "Not started";
   }
 }

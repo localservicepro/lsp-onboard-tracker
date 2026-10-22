@@ -1,17 +1,13 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
-import { useStore } from "../lib/store";
+import { useStore, type NewClientInput } from "../lib/store";
 import {
-  derivedOverallStatus,
-  completionBlock,
-  accessProgress,
-  connectionProgress,
-  practiceProgress,
-  staffVerificationProgress,
-  followupProgress,
-  unresolvedBlockers,
+  deriveClientStatus,
+  nextCallTypeForClient,
+  unfinishedCallOfType,
 } from "../lib/completion";
-import type { OverallStatus } from "../lib/types";
+import type { CallStatus, CallType } from "../lib/types";
+import { CALL_TYPES, CALL_TYPE_LABEL } from "../lib/types";
 import { StatusBadge } from "../components/status-badge";
 
 export const Route = createFileRoute("/")({
@@ -26,47 +22,63 @@ export const Route = createFileRoute("/")({
   component: Dashboard,
 });
 
-const STATUS_FILTERS: { value: OverallStatus | "all"; label: string }[] = [
+const STATUS_FILTERS: { value: CallStatus | "all"; label: string }[] = [
   { value: "all", label: "All statuses" },
   { value: "not_started", label: "Not started" },
   { value: "in_progress", label: "In progress" },
-  { value: "blocked", label: "Blocked" },
+  { value: "needs_followup", label: "Needs follow-up" },
   { value: "completed", label: "Completed" },
 ];
 
 function Dashboard() {
-  const { state, addClient } = useStore();
+  const { state, addClient, startCall } = useStore();
+  const navigate = useNavigate();
   const [query, setQuery] = useState("");
   const [staff, setStaff] = useState("all");
-  const [status, setStatus] = useState<OverallStatus | "all">("all");
+  const [callTypeFilter, setCallTypeFilter] = useState<CallType | "all">("all");
+  const [status, setStatus] = useState<CallStatus | "all">("all");
+  const [showTest, setShowTest] = useState(true);
   const [showNew, setShowNew] = useState(false);
 
+  const guides = state.settings.guides;
   const team = state.settings.team;
 
-  const clients = useMemo(() => {
+  const rows = useMemo(() => {
     const q = query.trim().toLowerCase();
-    const guides = state.settings.guides;
     return state.clients
-      .map((c) => ({ client: c, derived: derivedOverallStatus(c, guides) }))
-      .filter(({ client, derived }) => {
+      .map((c) => ({ client: c, derived: deriveClientStatus(c, guides), nextType: nextCallTypeForClient(c) }))
+      .filter(({ client, derived, nextType }) => {
+        if (!showTest && client.isTestRecord) return false;
         if (staff !== "all" && client.assignedTeamMember !== staff) return false;
         if (status !== "all" && derived !== status) return false;
+        if (callTypeFilter !== "all" && nextType !== callTypeFilter) return false;
         if (q) {
-          const hay = `${client.businessName} ${client.clientName} ${client.plan}`.toLowerCase();
+          const hay = `${client.businessName} ${client.clientName} ${client.notes ?? ""}`.toLowerCase();
           if (!hay.includes(q)) return false;
         }
         return true;
       });
-  }, [state.clients, state.settings.guides, query, staff, status]);
+  }, [state.clients, guides, query, staff, status, callTypeFilter, showTest]);
 
   const totals = useMemo(() => {
-    const all = state.clients;
-    const guides = state.settings.guides;
-    const blocked = all.filter((c) => derivedOverallStatus(c, guides) === "blocked").length;
-    const completed = all.filter((c) => derivedOverallStatus(c, guides) === "completed").length;
-    const openBlockers = all.reduce((n, c) => n + unresolvedBlockers(c).length, 0);
-    return { total: all.length, blocked, completed, openBlockers };
-  }, [state.clients, state.settings.guides]);
+    const all = state.clients.filter((c) => !c.isTestRecord);
+    const blocked = all.filter((c) => deriveClientStatus(c, guides) === "needs_followup").length;
+    const completed = all.filter((c) => deriveClientStatus(c, guides) === "completed").length;
+    return { total: all.length, blocked, completed };
+  }, [state.clients, guides]);
+
+  const onStart = (clientId: string, type: CallType) => {
+    const client = state.clients.find((c) => c.id === clientId);
+    if (!client) return;
+    // Reuse an existing unfinished call of this type, else start a new one.
+    const existing = unfinishedCallOfType(client, type);
+    if (existing) {
+      navigate({ to: "/clients/$clientId/call/$callId", params: { clientId, callId: existing.id } });
+    } else {
+      const id = startCall(clientId, type, client.assignedTeamMember, new Date().toISOString().slice(0, 10));
+      navigate({ to: "/clients/$clientId/call/$callId", params: { clientId, callId: id } });
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -77,22 +89,21 @@ function Dashboard() {
             LSP Onboarding Checklist
           </h1>
           <p className="mt-1 text-xs sm:text-sm text-muted-foreground max-w-2xl">
-            Track phone-app access, required connections, client practical skills and staff result verification across onboarding calls.
+            Track integration & connection calls and onboarding & training calls. Start or continue a call from each client row.
           </p>
         </div>
         <button
           onClick={() => setShowNew(true)}
           className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-xs sm:text-sm font-bold text-primary-foreground shadow-lg shadow-primary/25 hover:bg-primary/90 transition-all cursor-pointer min-h-[44px]"
         >
-          <span>+ New Client Record</span>
+          <span>+ Add Client</span>
         </button>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <StatCard label="Total Clients" value={totals.total} />
+      <div className="grid grid-cols-3 gap-3">
+        <StatCard label="Clients" value={totals.total} />
         <StatCard label="Completed" value={totals.completed} tone="ok" />
-        <StatCard label="Blocked / Action Required" value={totals.blocked} tone="warn" />
-        <StatCard label="Open Issues / Blockers" value={totals.openBlockers} tone="warn" />
+        <StatCard label="Needs Follow-up" value={totals.blocked} tone="warn" />
       </div>
 
       <div className="flex flex-wrap items-center gap-2.5 rounded-2xl border border-border bg-card p-3 shadow-sm">
@@ -100,7 +111,7 @@ function Dashboard() {
           aria-label="Search clients"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search business name, client or plan..."
+          placeholder="Search business, client or notes..."
           className="min-w-48 flex-1 rounded-xl border border-border bg-background px-3.5 py-2 text-xs sm:text-sm text-foreground outline-hidden focus:ring-2 focus:ring-accent min-h-[40px]"
         />
         <select
@@ -109,21 +120,36 @@ function Dashboard() {
           onChange={(e) => setStaff(e.target.value)}
           className="rounded-xl border border-border bg-background px-3.5 py-2 text-xs sm:text-sm text-foreground outline-hidden focus:ring-2 focus:ring-accent cursor-pointer min-h-[40px]"
         >
-          <option value="all">All Assigned Staff</option>
+          <option value="all">All Staff</option>
           {team.map((t) => (
             <option key={t.id} value={t.name}>{t.name}</option>
           ))}
         </select>
         <select
+          aria-label="Filter by call type"
+          value={callTypeFilter}
+          onChange={(e) => setCallTypeFilter(e.target.value as CallType | "all")}
+          className="rounded-xl border border-border bg-background px-3.5 py-2 text-xs sm:text-sm text-foreground outline-hidden focus:ring-2 focus:ring-accent cursor-pointer min-h-[40px]"
+        >
+          <option value="all">All Call Types</option>
+          {CALL_TYPES.map((t) => (
+            <option key={t.value} value={t.value}>{t.label}</option>
+          ))}
+        </select>
+        <select
           aria-label="Filter by status"
           value={status}
-          onChange={(e) => setStatus(e.target.value as OverallStatus | "all")}
+          onChange={(e) => setStatus(e.target.value as CallStatus | "all")}
           className="rounded-xl border border-border bg-background px-3.5 py-2 text-xs sm:text-sm text-foreground outline-hidden focus:ring-2 focus:ring-accent cursor-pointer min-h-[40px]"
         >
           {STATUS_FILTERS.map((s) => (
             <option key={s.value} value={s.value}>{s.label}</option>
           ))}
         </select>
+        <label className="inline-flex items-center gap-1.5 text-xs font-semibold text-muted-foreground cursor-pointer px-1">
+          <input type="checkbox" checked={showTest} onChange={(e) => setShowTest(e.target.checked)} className="h-4 w-4 rounded border-border accent-accent cursor-pointer" />
+          Test records
+        </label>
       </div>
 
       <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
@@ -133,49 +159,57 @@ function Dashboard() {
               <tr>
                 <th className="px-4 py-3 font-bold">Business &amp; Client</th>
                 <th className="hidden px-3 py-3 font-bold sm:table-cell">Assigned</th>
-                <th className="hidden px-3 py-3 font-bold md:table-cell">Connections</th>
-                <th className="hidden px-3 py-3 font-bold md:table-cell">Practice</th>
-                <th className="hidden px-3 py-3 font-bold lg:table-cell">Staff Verif.</th>
-                <th className="px-4 py-3 font-bold">Overall Status</th>
+                <th className="hidden px-3 py-3 font-bold md:table-cell">Next Call</th>
+                <th className="hidden px-3 py-3 font-bold md:table-cell">Date</th>
+                <th className="px-4 py-3 font-bold">Status</th>
+                <th className="px-4 py-3 font-bold text-right">Action</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border/60">
-              {clients.length === 0 && (
+              {rows.length === 0 && (
                 <tr>
                   <td colSpan={6} className="px-4 py-10 text-center text-xs text-muted-foreground">
                     No client records match the current filter selection.
                   </td>
                 </tr>
               )}
-              {clients.map(({ client, derived }) => {
-                const guides = state.settings.guides;
-                const conn = connectionProgress(client);
-                const prac = practiceProgress(client);
-                const sv = staffVerificationProgress(client);
-                const block = completionBlock(client, guides);
+              {rows.map(({ client, derived, nextType }) => {
+                const unfinished = unfinishedCallOfType(client, nextType);
                 return (
                   <tr key={client.id} className="hover:bg-accent/10 transition-colors">
                     <td className="px-4 py-3.5">
                       <Link to="/clients/$clientId" params={{ clientId: client.id }} className="block group">
-                        <div className="font-bold text-foreground group-hover:text-accent transition-colors">
-                          {client.businessName}
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-bold text-foreground group-hover:text-accent transition-colors">
+                            {client.businessName}
+                          </span>
+                          {client.isTestRecord && (
+                            <span className="rounded-full border border-amber-500/50 bg-amber-500/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-300">
+                              Test
+                            </span>
+                          )}
                         </div>
-                        <div className="text-xs text-muted-foreground">{client.clientName} · {client.plan}</div>
+                        <div className="text-xs text-muted-foreground">{client.clientName}</div>
                       </Link>
                     </td>
                     <td className="hidden px-3 py-3.5 text-muted-foreground font-medium sm:table-cell">{client.assignedTeamMember}</td>
-                    <td className="hidden px-3 py-3.5 md:table-cell"><MiniBar done={conn.done} total={conn.total} /></td>
-                    <td className="hidden px-3 py-3.5 md:table-cell"><MiniBar done={prac.done} total={prac.total} /></td>
-                    <td className="hidden px-3 py-3.5 lg:table-cell"><MiniBar done={sv.done} total={sv.total} /></td>
+                    <td className="hidden px-3 py-3.5 md:table-cell">
+                      <span className="text-xs font-semibold text-foreground">{CALL_TYPE_LABEL[nextType]}</span>
+                    </td>
+                    <td className="hidden px-3 py-3.5 text-muted-foreground font-mono md:table-cell">
+                      {client.nextCallDate ?? "—"}
+                    </td>
                     <td className="px-4 py-3.5">
-                      <div className="flex items-center gap-2">
-                        <StatusBadge status={derived} />
-                        {!block.ok && derived !== "completed" && (
-                          <span className="text-[11px] font-semibold text-destructive" title={block.reasons.join(" · ")}>
-                            {block.reasons.length} blocker(s)
-                          </span>
-                        )}
-                      </div>
+                      <StatusBadge status={derived} />
+                    </td>
+                    <td className="px-4 py-3.5 text-right">
+                      <button
+                        onClick={() => onStart(client.id, nextType)}
+                        className="inline-flex items-center gap-1.5 rounded-xl bg-primary px-3.5 py-2 text-xs font-bold text-primary-foreground shadow-md shadow-primary/20 hover:bg-primary/90 transition-colors cursor-pointer min-h-[36px]"
+                      >
+                        {unfinished ? "Continue Call" : "Start Call"}
+                        <span>→</span>
+                      </button>
                     </td>
                   </tr>
                 );
@@ -187,12 +221,15 @@ function Dashboard() {
 
       {showNew && (
         <NewClientDialog
+          team={team}
           onClose={() => setShowNew(false)}
           onCreate={(input) => {
-            addClient(input);
+            const id = addClient(input);
             setShowNew(false);
+            // Start the appropriate call immediately so staff can begin the checklist.
+            const callId = startCall(id, input.callType, input.assignedTeamMember, input.callDate ?? new Date().toISOString().slice(0, 10));
+            navigate({ to: "/clients/$clientId/call/$callId", params: { clientId: id, callId } });
           }}
-          team={team}
         />
       )}
     </div>
@@ -209,101 +246,91 @@ function StatCard({ label, value, tone }: { label: string; value: number; tone?:
   );
 }
 
-function MiniBar({ done, total }: { done: number; total: number }) {
-  const pct = total === 0 ? 0 : Math.round((done / total) * 100);
-  return (
-    <div className="flex items-center gap-2">
-      <div className="h-1.5 w-16 overflow-hidden rounded-full bg-secondary">
-        <div className="h-full rounded-full bg-primary" style={{ width: `${pct}%` }} />
-      </div>
-      <span className="text-xs font-mono text-muted-foreground">{done}/{total}</span>
-    </div>
-  );
-}
-
 function NewClientDialog({
+  team,
   onClose,
   onCreate,
-  team,
 }: {
-  onClose: () => void;
-  onCreate: (input: import("../lib/store").NewClientInput) => void;
   team: { id: string; name: string }[];
+  onClose: () => void;
+  onCreate: (input: NewClientInput) => void;
 }) {
   const [businessName, setBusinessName] = useState("");
   const [clientName, setClientName] = useState("");
-  const [ghlLocationId, setGhlLocationId] = useState("");
-  const [ghlLink, setGhlLink] = useState("");
-  const [assignedTeamMember, setAssignedTeamMember] = useState(team[0]?.name ?? "Avery Chen");
+  const [assignedTeamMember, setAssignedTeamMember] = useState(team[0]?.name ?? "");
+  const [callType, setCallType] = useState<CallType>("connection");
   const [callDate, setCallDate] = useState(new Date().toISOString().slice(0, 10));
-  const [plan, setPlan] = useState("Digital Essentials — GBP & Web Management ($500/mo)");
+  const [contactDetails, setContactDetails] = useState("");
+  const [ghlLink, setGhlLink] = useState("");
   const [notes, setNotes] = useState("");
 
-  const valid = businessName.trim() && clientName.trim() && assignedTeamMember && plan.trim();
+  const valid = businessName.trim() && clientName.trim() && assignedTeamMember && callType;
 
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-background/80 backdrop-blur-sm p-4" onClick={onClose}>
       <div className="w-full max-w-lg rounded-2xl border-2 border-accent/40 bg-card p-6 shadow-2xl space-y-4" onClick={(e) => e.stopPropagation()}>
         <div>
           <span className="text-xs font-mono font-bold text-accent uppercase tracking-wider">Internal Staff Tool</span>
-          <h2 className="font-display text-xl font-bold text-foreground">Create New Client Record</h2>
-          <p className="mt-1 text-xs text-muted-foreground">Synthetic prototype store — do not enter real customer passwords or credentials.</p>
+          <h2 className="font-display text-xl font-bold text-foreground">Add New Client</h2>
+          <p className="mt-1 text-xs text-muted-foreground">Quick add. The appropriate checklist is created automatically. Do not enter real credentials.</p>
         </div>
 
         <div className="grid gap-3 sm:grid-cols-2 text-xs">
           <Field label="Business Name *">
             <input className={inputCls} placeholder="e.g. Miller Plumbing" value={businessName} onChange={(e) => setBusinessName(e.target.value)} />
           </Field>
-          <Field label="Client Full Name *">
+          <Field label="Client Name *">
             <input className={inputCls} placeholder="e.g. Jack Miller" value={clientName} onChange={(e) => setClientName(e.target.value)} />
           </Field>
-          <Field label="GHL Location ID (optional)">
-            <input className={inputCls} placeholder="e.g. loc_miller_99" value={ghlLocationId} onChange={(e) => setGhlLocationId(e.target.value)} />
-          </Field>
-          <Field label="GHL App Link (optional)">
-            <input className={inputCls} placeholder="https://..." value={ghlLink} onChange={(e) => setGhlLink(e.target.value)} />
-          </Field>
-          <Field label="Assigned Team Member *">
+          <Field label="Assigned Staff *">
             <select className={inputCls} value={assignedTeamMember} onChange={(e) => setAssignedTeamMember(e.target.value)}>
               {team.map((t) => <option key={t.id} value={t.name}>{t.name}</option>)}
             </select>
           </Field>
-          <Field label="Call Date *">
+          <Field label="Call Type *">
+            <select className={inputCls} value={callType} onChange={(e) => setCallType(e.target.value as CallType)}>
+              {CALL_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+            </select>
+          </Field>
+          <Field label="Call Date (optional)">
             <input type="date" className={inputCls} value={callDate} onChange={(e) => setCallDate(e.target.value)} />
           </Field>
+          <Field label="GHL Subaccount Link (optional)">
+            <input className={inputCls} placeholder="https://..." value={ghlLink} onChange={(e) => setGhlLink(e.target.value)} />
+          </Field>
           <div className="sm:col-span-2">
-            <Field label="Plan / Inclusions * (manually entered)">
-              <input className={inputCls} value={plan} onChange={(e) => setPlan(e.target.value)} />
+            <Field label="Contact Details (optional)">
+              <input className={inputCls} placeholder="Phone / email (no passwords)" value={contactDetails} onChange={(e) => setContactDetails(e.target.value)} />
             </Field>
           </div>
           <div className="sm:col-span-2">
-            <Field label="Notes / Call Agenda">
+            <Field label="Notes (optional)">
               <textarea className={inputCls} rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Initial notes..." />
             </Field>
           </div>
         </div>
 
         <div className="flex justify-end gap-2 pt-2">
-          <button onClick={onClose} className="rounded-xl border border-border px-4 py-2 text-xs font-semibold hover:bg-secondary cursor-pointer">
+          <button onClick={onClose} className="rounded-xl border border-border px-4 py-2 text-xs font-semibold hover:bg-secondary cursor-pointer min-h-[40px]">
             Cancel
           </button>
           <button
             disabled={!valid}
             onClick={() =>
               onCreate({
-                businessName,
-                clientName,
-                ...(ghlLocationId ? { ghlLocationId } : {}),
-                ...(ghlLink ? { ghlLink } : {}),
+                businessName: businessName.trim(),
+                clientName: clientName.trim(),
                 assignedTeamMember,
-                callDate,
-                plan,
+                callType,
+                ...(callDate ? { callDate } : {}),
+                ...(contactDetails ? { contactDetails } : {}),
+                ...(ghlLink ? { ghlLink } : {}),
                 ...(notes ? { notes } : {}),
               })
             }
-            className="rounded-xl bg-primary px-5 py-2 text-xs font-bold text-primary-foreground disabled:opacity-50 cursor-pointer shadow-md shadow-primary/20"
+            className="rounded-xl bg-primary px-5 py-2 text-xs font-bold text-primary-foreground disabled:opacity-50 cursor-pointer shadow-md shadow-primary/20 min-h-[40px]"
           >
-            Create Record
+            Add &amp; Start Call
           </button>
         </div>
       </div>
