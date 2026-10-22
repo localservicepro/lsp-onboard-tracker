@@ -71,6 +71,12 @@ const STATUS_BADGE: Record<ItemStatus, string> = {
 // A compact, single-row checklist item. Staff identity + timestamps are
 // recorded automatically and hidden under an expandable "Details" control —
 // not repeated beneath every task.
+//
+// For `demoPractice` items (manually add a contact / send a review request),
+// the flow is STAFF DEMONSTRATES → CLIENT DOES IT → STAFF CONFIRMS. Two clearly
+// labelled boxes are shown: "Staff demonstrated" (does NOT complete the task)
+// and "Client performed" (only this counts as practical completion, and it
+// requires a short result note). Neither box is auto-checked.
 export function CallItemRow({
   item,
   actor,
@@ -84,15 +90,39 @@ export function CallItemRow({
   const statuses = isClientAction ? CLIENT_ACTION_STATUSES : STAFF_CHECK_STATUSES;
   const done = isItemDone(item);
   const exempt = isItemExempt(item);
+  const isDemoPractice = !!item.demoPractice;
 
   const setStatus = (st: ItemStatus) =>
     onSet(
       {
         status: st,
         completedBy: st === "done" ? (item.completedBy ?? actor) : item.completedBy,
-        completedAt: st === "done" ? (item.completedAt ?? new Date().toISOString()) : item.completedAt,
+        completedAt:
+          st === "done" ? (item.completedAt ?? new Date().toISOString()) : item.completedAt,
       },
       `Status → ${st}`,
+    );
+
+  // Demo & Client Practice boxes.
+  const toggleDemo = (checked: boolean) =>
+    onSet(
+      {
+        staffDemonstrated: checked,
+        staffDemonstratedBy: checked ? (item.staffDemonstratedBy ?? actor) : undefined,
+        staffDemonstratedAt: checked
+          ? (item.staffDemonstratedAt ?? new Date().toISOString())
+          : undefined,
+      },
+      checked ? "Staff demonstrated the task" : "Staff demonstration cleared",
+    );
+  const togglePerformed = (checked: boolean) =>
+    onSet(
+      {
+        status: checked ? "done" : "not_checked",
+        completedBy: checked ? (item.completedBy ?? actor) : item.completedBy,
+        completedAt: checked ? (item.completedAt ?? new Date().toISOString()) : item.completedAt,
+      },
+      checked ? "Client performed the task after the demonstration" : "Client performance cleared",
     );
 
   return (
@@ -133,14 +163,54 @@ export function CallItemRow({
         </div>
       </div>
 
+      {/* Demo & Client Practice — two clearly labelled boxes.
+          Staff demonstrated does NOT complete the task; only Client performed
+          counts, and it requires a short result note. Neither is auto-checked. */}
+      {isDemoPractice && (
+        <div className="mt-2.5 grid gap-2 sm:grid-cols-2">
+          <label
+            className={`flex items-start gap-2 rounded-lg border p-2.5 text-xs font-semibold cursor-pointer transition-colors ${item.staffDemonstrated ? "border-primary/50 bg-primary/10 text-foreground" : "border-border bg-background text-muted-foreground hover:border-primary/30"}`}
+          >
+            <input
+              type="checkbox"
+              checked={!!item.staffDemonstrated}
+              onChange={(e) => toggleDemo(e.target.checked)}
+              className="mt-0.5 h-4 w-4 rounded border-border accent-primary cursor-pointer"
+            />
+            <span>
+              <span className="block text-foreground">□ Staff demonstrated the task</span>
+              <span className="block text-[11px] font-normal text-muted-foreground">
+                Does NOT complete the task. Recorded automatically with staff &amp; time.
+              </span>
+            </span>
+          </label>
+          <label
+            className={`flex items-start gap-2 rounded-lg border p-2.5 text-xs font-semibold cursor-pointer transition-colors ${item.status === "done" ? "border-chart-1/50 bg-chart-1/10 text-foreground" : "border-border bg-background text-muted-foreground hover:border-chart-1/30"}`}
+          >
+            <input
+              type="checkbox"
+              checked={item.status === "done"}
+              onChange={(e) => togglePerformed(e.target.checked)}
+              className="mt-0.5 h-4 w-4 rounded border-border accent-chart-1 cursor-pointer"
+            />
+            <span>
+              <span className="block text-foreground">
+                □ Client performed the task after the demonstration
+              </span>
+              <span className="block text-[11px] font-normal text-muted-foreground">
+                Observing staff personally watched the client do it. Requires a result note.
+              </span>
+            </span>
+          </label>
+        </div>
+      )}
+
       {/* Done: short result/verification note (mandatory evidence for client actions) */}
       {item.status === "done" && (
         <div className="mt-2.5 space-y-2">
           <div>
             <span className="block text-[11px] text-muted-foreground mb-1">
-              {isClientAction
-                ? "Result / observation note * (mandatory):"
-                : "Verification note:"}
+              {isClientAction ? "Result / observation note * (mandatory):" : "Verification note:"}
             </span>
             <textarea
               className={inputCls}
@@ -175,7 +245,10 @@ export function CallItemRow({
                 className={inputCls + " w-auto"}
                 value={item.reviewOutcome ?? "sent"}
                 onChange={(e) =>
-                  onSet({ reviewOutcome: e.target.value as ReviewOutcome }, "Review outcome updated")
+                  onSet(
+                    { reviewOutcome: e.target.value as ReviewOutcome },
+                    "Review outcome updated",
+                  )
                 }
               >
                 {REVIEW_OUTCOMES.map((r) => (
@@ -184,7 +257,9 @@ export function CallItemRow({
                   </option>
                 ))}
               </select>
-              <span className="text-[11px] text-muted-foreground">"Sent" ≠ "Receipt confirmed".</span>
+              <span className="text-[11px] text-muted-foreground">
+                "Sent" ≠ "Receipt confirmed".
+              </span>
             </div>
           )}
         </div>
@@ -270,7 +345,11 @@ export function CallItemRow({
               defaultValue={item.completedAt ? item.completedAt.slice(0, 16) : ""}
               onChange={(e) =>
                 onSet(
-                  { completedAt: e.target.value ? new Date(e.target.value).toISOString() : undefined },
+                  {
+                    completedAt: e.target.value
+                      ? new Date(e.target.value).toISOString()
+                      : undefined,
+                  },
                   "Timestamp updated",
                 )
               }
@@ -323,12 +402,15 @@ export function GuideDerivedRow({
       {derived !== "done" && outstanding.length > 0 && (
         <div className="mt-2 rounded-lg border border-amber-500/40 bg-amber-500/5 px-2.5 py-1.5 text-xs text-amber-300">
           <span className="font-bold">Outstanding guides:</span>{" "}
-          {outstanding.map((g) => guideLabel(g, guides) + (guideHasUrl(g, guides) ? "" : " [link not added]")).join("; ")}
+          {outstanding
+            .map((g) => guideLabel(g, guides) + (guideHasUrl(g, guides) ? "" : " [link not added]"))
+            .join("; ")}
         </div>
       )}
       {derived === "done" && (
         <div className="mt-2 text-xs text-chart-1">
-          ✓ {sentValid.length} guide(s) sent{exemptGuides.length > 0 ? `, ${exemptGuides.length} exempted` : ""}.
+          ✓ {sentValid.length} guide(s) sent
+          {exemptGuides.length > 0 ? `, ${exemptGuides.length} exempted` : ""}.
         </div>
       )}
     </div>
@@ -348,11 +430,13 @@ export function CallGuidesSection({
 }) {
   return (
     <section className="rounded-2xl border border-border bg-card p-5">
-      <h2 className="font-display text-lg font-bold text-foreground">How-To Guides</h2>
+      <h2 className="font-display text-lg font-bold text-foreground">
+        Resources &amp; Guide Delivery
+      </h2>
       <p className="mt-1 text-xs text-muted-foreground">
-        Opening a guide does NOT mark it sent. "Mark sent" requires a valid supplied link, date,
-        channel and staff. A verbal walkthrough is recorded separately and never counts as a sent
-        guide. A missing guide cannot be marked sent.
+        Sending a written guide is different from demonstrating or practising a task (those are
+        tracked on the checklist above). Opening a guide does NOT mark it sent. "Mark sent" requires
+        a valid supplied link, date, channel and staff. A missing guide cannot be marked sent.
       </p>
       <div className="mt-3 space-y-3">
         {call.guides.map((g) => {
@@ -398,7 +482,9 @@ export function CallGuidesSection({
                         g.guideId,
                         {
                           sent: e.target.checked,
-                          sentAt: e.target.checked ? (g.sentAt ?? new Date().toISOString()) : undefined,
+                          sentAt: e.target.checked
+                            ? (g.sentAt ?? new Date().toISOString())
+                            : undefined,
                           sentBy: e.target.checked ? (g.sentBy ?? actor) : undefined,
                           channel: e.target.checked ? (g.channel ?? "email") : undefined,
                           suppliedUrlOrVersion: e.target.checked
@@ -430,7 +516,11 @@ export function CallGuidesSection({
                       onChange={(e) =>
                         onSetGuide(
                           g.guideId,
-                          { sentAt: e.target.value ? new Date(e.target.value).toISOString() : undefined },
+                          {
+                            sentAt: e.target.value
+                              ? new Date(e.target.value).toISOString()
+                              : undefined,
+                          },
                           actor,
                         )
                       }
@@ -475,77 +565,6 @@ export function CallGuidesSection({
                   </div>
                 </div>
               )}
-
-              {/* Verbal walkthrough — separate */}
-              <div className="mt-2.5 rounded-lg border border-border/60 bg-card/40 p-2.5">
-                <div className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider mb-1.5">
-                  Verbal Walkthrough (separate — does NOT count as sent)
-                </div>
-                <label className="flex items-center gap-2 text-xs font-bold cursor-pointer text-foreground">
-                  <input
-                    type="checkbox"
-                    checked={!!g.walkthroughProvided}
-                    onChange={(e) =>
-                      onSetGuide(
-                        g.guideId,
-                        {
-                          walkthroughProvided: e.target.checked,
-                          walkthroughAt: e.target.checked
-                            ? (g.walkthroughAt ?? new Date().toISOString())
-                            : undefined,
-                          walkthroughBy: e.target.checked ? (g.walkthroughBy ?? actor) : undefined,
-                        },
-                        e.target.checked ? "Verbal walkthrough recorded" : "Walkthrough cleared",
-                      )
-                    }
-                    className="h-4 w-4 rounded border-border accent-accent cursor-pointer"
-                  />
-                  <span>Verbal walkthrough provided on call</span>
-                </label>
-                {g.walkthroughProvided && (
-                  <div className="mt-2 grid gap-2 sm:grid-cols-3 text-xs">
-                    <div>
-                      <span className="block text-[11px] text-muted-foreground mb-1">Date:</span>
-                      <input
-                        type="date"
-                        className={inputCls}
-                        defaultValue={g.walkthroughAt?.slice(0, 10) ?? ""}
-                        onChange={(e) =>
-                          onSetGuide(
-                            g.guideId,
-                            {
-                              walkthroughAt: e.target.value
-                                ? new Date(e.target.value).toISOString()
-                                : undefined,
-                            },
-                            actor,
-                          )
-                        }
-                      />
-                    </div>
-                    <div>
-                      <span className="block text-[11px] text-muted-foreground mb-1">By:</span>
-                      <input
-                        className={inputCls}
-                        defaultValue={g.walkthroughBy ?? actor}
-                        onBlur={(e) =>
-                          onSetGuide(g.guideId, { walkthroughBy: e.target.value }, actor)
-                        }
-                      />
-                    </div>
-                    <div className="sm:col-span-3">
-                      <span className="block text-[11px] text-muted-foreground mb-1">Notes:</span>
-                      <input
-                        className={inputCls}
-                        defaultValue={g.walkthroughNotes ?? ""}
-                        onBlur={(e) =>
-                          onSetGuide(g.guideId, { walkthroughNotes: e.target.value }, actor)
-                        }
-                      />
-                    </div>
-                  </div>
-                )}
-              </div>
 
               {/* Exemption */}
               <div className="mt-2.5 rounded-lg border border-border/60 bg-card/40 p-2.5">

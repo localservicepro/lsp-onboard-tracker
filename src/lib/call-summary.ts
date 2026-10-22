@@ -5,6 +5,7 @@ import {
   isItemExempt,
   itemNeedsFollowUp,
   itemStatusLabel,
+  isItemDemonstrated,
   effectiveItem,
   callCompletionBlock,
   deriveCallStatus,
@@ -27,6 +28,13 @@ export function buildCallSummary(client: Client, call: Call, guides: GuideLink[]
   const needsHelp = effItems.filter(itemNeedsFollowUp);
   const exempt = effItems.filter(isItemExempt);
   const notChecked = effItems.filter((i) => i.status === "not_checked");
+
+  // Demo & Client Practice split.
+  const clientPerformed = completed.filter((i) => i.kind === "client_action");
+  const staffDemonstratedOnly = effItems.filter(
+    (i) => isItemDemonstrated(i) && !(i.status === "done" && isItemDone(i)),
+  );
+  const needsPractice = needsHelp.filter((i) => i.kind === "client_action");
 
   const guidesSent = call.guides.filter((g) => isGuideSentValid(g, guides));
   const walkthroughs = call.guides.filter((g) => g.walkthroughProvided);
@@ -52,32 +60,63 @@ export function buildCallSummary(client: Client, call: Call, guides: GuideLink[]
     lines.push("NOTE: Internal test record — not a completed onboarding example.");
   lines.push("");
 
-  // What was completed
-  lines.push(`COMPLETED (${completed.length}):`);
-  if (completed.length === 0) {
-    lines.push("  - None completed this call");
+  // Client successfully performed (only this counts as practical completion)
+  lines.push(`CLIENT SUCCESSFULLY PERFORMED (${clientPerformed.length}):`);
+  if (clientPerformed.length === 0) {
+    lines.push("  - None");
   } else {
-    completed.forEach((i) => {
+    clientPerformed.forEach((i) => {
       const ev = i.evidence ? ` — "${i.evidence}"` : "";
       const ro = i.reviewOutcome ? ` [review: ${i.reviewOutcome}]` : "";
-      lines.push(
-        `  - [${i.kind === "client_action" ? "CLIENT DID IT" : "DONE"}] ${i.label}${ro}${ev}`,
-      );
+      lines.push(`  - ${i.label}${ro}${ev}`);
     });
   }
   lines.push("");
 
-  // What needs help
-  lines.push(`NEEDS HELP (${needsHelp.length}):`);
-  if (needsHelp.length === 0) {
-    lines.push("  - None");
-  } else {
-    needsHelp.forEach((i) => {
+  // Staff demonstrated (does NOT count as client completion)
+  if (staffDemonstratedOnly.length > 0) {
+    lines.push(
+      `STAFF DEMONSTRATED ONLY (${staffDemonstratedOnly.length}) — not client completion:`,
+    );
+    staffDemonstratedOnly.forEach((i) => {
+      const by = i.staffDemonstratedBy ? ` by ${i.staffDemonstratedBy}` : "";
+      lines.push(`  - ${i.label}${by}`);
+    });
+    lines.push("");
+  }
+
+  // Client needs more practice
+  if (needsPractice.length > 0) {
+    lines.push(`CLIENT NEEDS MORE PRACTICE (${needsPractice.length}):`);
+    needsPractice.forEach((i) => {
+      lines.push(`  - ${i.label}: ${i.issue?.trim() || "needs help"}`);
+      if (i.nextAction) lines.push(`      Next action: ${i.nextAction}`);
+    });
+    lines.push("");
+  }
+
+  // Other completed (staff checks)
+  const staffDone = completed.filter((i) => i.kind === "staff_check");
+  if (staffDone.length > 0) {
+    lines.push(`STAFF CHECKS DONE (${staffDone.length}):`);
+    staffDone.forEach((i) => {
+      const ev = i.evidence ? ` — "${i.evidence}"` : "";
+      lines.push(`  - ${i.label}${ev}`);
+    });
+    lines.push("");
+  }
+
+  // Other items needing help (staff checks / non-practice) — practice needs
+  // are already listed under "CLIENT NEEDS MORE PRACTICE" above.
+  const otherNeedsHelp = needsHelp.filter((i) => i.kind !== "client_action");
+  if (otherNeedsHelp.length > 0) {
+    lines.push(`OTHER ITEMS NEEDING HELP (${otherNeedsHelp.length}):`);
+    otherNeedsHelp.forEach((i) => {
       lines.push(`  - ${i.label}: ${i.issue?.trim() || "issue recorded"}`);
       if (i.nextAction) lines.push(`      Next action: ${i.nextAction}`);
     });
+    lines.push("");
   }
-  lines.push("");
 
   // Owner & next action (call-level follow-up)
   if (call.followUpAction || call.followUpDate) {
@@ -196,6 +235,23 @@ export function buildClientSummary(client: Client, guides: GuideLink[] = []): st
         );
       });
   }
+
+  // Demo & Client Practice aggregate across all calls
+  let performed = 0;
+  let demonstratedOnly = 0;
+  let needsPractice = 0;
+  for (const c of client.calls) {
+    const effItems = c.items.map((i) => effectiveItem(c, i, guides));
+    for (const it of effItems) {
+      if (it.kind !== "client_action") continue;
+      if (it.status === "done" && isItemDone(it)) performed++;
+      else if (isItemDemonstrated(it)) demonstratedOnly++;
+      if (itemNeedsFollowUp(it)) needsPractice++;
+    }
+  }
+  lines.push(
+    `CLIENT PRACTICE: ${performed} performed · ${demonstratedOnly} staff-demonstrated only · ${needsPractice} need more practice`,
+  );
   lines.push("");
 
   // Aggregated guides actually sent across all calls

@@ -256,25 +256,34 @@ export function StoreProvider({ children }: { children: ReactNode }) {
                   if (it.id !== itemId) return it;
                   const from = it.status;
                   const next: CallItem = { ...it, ...patch };
+                  let audited = it.audit;
                   if (patch.status && patch.status !== from) {
-                    next.audit = pushAudit(
-                      it.audit,
+                    audited = pushAudit(
+                      audited,
                       actor,
                       `Item: ${it.label}`,
                       from,
                       patch.status,
                       reason ?? "",
                     );
-                  } else if (reason) {
-                    next.audit = pushAudit(
-                      it.audit,
+                  }
+                  if (
+                    patch.staffDemonstrated !== undefined &&
+                    patch.staffDemonstrated !== it.staffDemonstrated
+                  ) {
+                    audited = pushAudit(
+                      audited,
                       actor,
-                      `Item: ${it.label}`,
-                      from,
-                      from,
-                      reason,
+                      `Item: ${it.label} (staff demonstrated)`,
+                      it.staffDemonstrated ? "Demonstrated" : "Not demonstrated",
+                      patch.staffDemonstrated ? "Demonstrated" : "Not demonstrated",
+                      reason ?? "Staff demonstration recorded",
                     );
                   }
+                  if (audited.length === it.audit.length && reason) {
+                    audited = pushAudit(audited, actor, `Item: ${it.label}`, from, from, reason);
+                  }
+                  next.audit = audited;
                   return next;
                 }),
               };

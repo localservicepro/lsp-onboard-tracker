@@ -5,7 +5,12 @@ import { deriveCallStatus, callCompletionBlock, callItemProgress } from "../lib/
 import { CALL_TYPE_LABEL } from "../lib/types";
 import { StatusBadge } from "../components/status-badge";
 import { buildCallSummary, copyToClipboard } from "../lib/call-summary";
-import { CallItemRow, GuideDerivedRow, CallGuidesSection, inputCls } from "../components/client-sections";
+import {
+  CallItemRow,
+  GuideDerivedRow,
+  CallGuidesSection,
+  inputCls,
+} from "../components/client-sections";
 
 export const Route = createFileRoute("/clients/$clientId/call/$callId")({
   head: () => ({
@@ -28,7 +33,10 @@ function CallSessionPage() {
   const client = state.clients.find((c) => c.id === clientId);
   const call = client?.calls.find((c) => c.id === callId);
   const [actor, setActor] = useState(
-    call?.staffMember ?? client?.assignedTeamMember ?? state.settings.team[0]?.name ?? "Staff Member",
+    call?.staffMember ??
+      client?.assignedTeamMember ??
+      state.settings.team[0]?.name ??
+      "Staff Member",
   );
   const [copied, setCopied] = useState(false);
 
@@ -126,7 +134,8 @@ function CallSessionPage() {
         <div className="rounded-2xl border-2 border-destructive/50 bg-destructive/10 p-4 text-sm">
           <div className="flex items-center gap-2 font-bold text-destructive">
             <span className="h-2 w-2 rounded-full bg-destructive" />
-            Checklist not complete — {prog.needsHelpCount ?? 0 > 0 ? "follow-up required" : "items remaining"}
+            Checklist not complete —{" "}
+            {(prog.needsHelpCount ?? 0 > 0) ? "follow-up required" : "items remaining"}
           </div>
           <ul className="mt-2 list-disc space-y-1 pl-5 text-xs text-destructive/90">
             {block.reasons.map((r, i) => (
@@ -139,11 +148,13 @@ function CallSessionPage() {
       {/* Client-led practical tasks — explanation shown once */}
       {clientActions.length > 0 && (
         <section className="rounded-2xl border border-border bg-card p-5">
-          <h2 className="font-display text-lg font-bold text-foreground">Client-Led Practical Tasks</h2>
+          <h2 className="font-display text-lg font-bold text-foreground">
+            Client-Led Practical Tasks
+          </h2>
           <p className="mt-1 text-xs text-muted-foreground">
             "Client did it" = staff observed the client personally perform it. A staff demonstration
-            does NOT count. Staff identity and timestamps are recorded automatically and hidden under
-            each item's "Details".
+            does NOT count. Staff identity and timestamps are recorded automatically and hidden
+            under each item's "Details".
           </p>
           <div className="mt-3 space-y-2.5">
             {clientActions.map((it) => (
@@ -151,7 +162,9 @@ function CallSessionPage() {
                 key={it.id}
                 item={it}
                 actor={actor}
-                onSet={(patch, reason) => setCallItem(client.id, call.id, it.id, patch, actor, reason)}
+                onSet={(patch, reason) =>
+                  setCallItem(client.id, call.id, it.id, patch, actor, reason)
+                }
               />
             ))}
           </div>
@@ -163,8 +176,8 @@ function CallSessionPage() {
         <section className="rounded-2xl border border-border bg-card p-5">
           <h2 className="font-display text-lg font-bold text-foreground">Staff Checks</h2>
           <p className="mt-1 text-xs text-muted-foreground">
-            Staff-only items use Done (not "Client did it"). These record verification only — they do
-            not perform integrations or request credentials.
+            Staff-only items use Done (not "Client did it"). These record verification only — they
+            do not perform integrations or request credentials.
           </p>
           <div className="mt-3 space-y-2.5">
             {staffChecks.map((it) => (
@@ -172,7 +185,9 @@ function CallSessionPage() {
                 key={it.id}
                 item={it}
                 actor={actor}
-                onSet={(patch, reason) => setCallItem(client.id, call.id, it.id, patch, actor, reason)}
+                onSet={(patch, reason) =>
+                  setCallItem(client.id, call.id, it.id, patch, actor, reason)
+                }
               />
             ))}
           </div>
@@ -194,7 +209,8 @@ function CallSessionPage() {
         <section className="rounded-2xl border border-border bg-card p-5">
           <h2 className="font-display text-lg font-bold text-foreground">Guide-Derived Summary</h2>
           <p className="mt-1 text-xs text-muted-foreground">
-            These items are auto-calculated from the guide records above and cannot be edited directly.
+            These items are auto-calculated from the guide records above and cannot be edited
+            directly.
           </p>
           <div className="mt-3 space-y-2.5">
             {guideDerivedItems.map((it) => (
@@ -206,7 +222,9 @@ function CallSessionPage() {
 
       {/* Notes + follow-up */}
       <section className="rounded-2xl border border-border bg-card p-5 space-y-3">
-        <h2 className="font-display text-lg font-bold text-foreground">Call Notes &amp; Follow-up</h2>
+        <h2 className="font-display text-lg font-bold text-foreground">
+          Call Notes &amp; Follow-up
+        </h2>
         <div>
           <span className="mb-1 block text-xs font-semibold text-muted-foreground">Call Notes</span>
           <textarea
@@ -274,7 +292,9 @@ function CallSessionPage() {
         <div className="flex items-center justify-between mb-2">
           <div>
             <h2 className="font-display text-lg font-bold text-foreground">Call Summary</h2>
-            <p className="text-xs text-muted-foreground">Readable guide names. Copying never sends anything.</p>
+            <p className="text-xs text-muted-foreground">
+              Readable guide names. Copying never sends anything.
+            </p>
           </div>
           <button
             onClick={onCopy}

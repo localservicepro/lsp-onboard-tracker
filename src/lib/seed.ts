@@ -115,6 +115,7 @@ export function buildCallItems(template: ChecklistTemplate): CallItem[] {
       status: "not_checked" as ItemStatus,
       reviewSend: ti.reviewSend,
       guideDerived: ti.guideDerived,
+      demoPractice: ti.demoPractice,
       helpText: ti.helpText,
       audit: [],
     }));
@@ -255,6 +256,9 @@ export function seedState(): AppState {
           ...it,
           status: "done",
           evidence: "Client added test contact 'Sarah Miller - Test'.",
+          staffDemonstrated: true,
+          staffDemonstratedBy: "Jordan Patel",
+          staffDemonstratedAt: nowISO(5),
           completedBy: "Jordan Patel",
           completedAt: nowISO(5),
         };
@@ -288,6 +292,9 @@ export function seedState(): AppState {
           status: "done",
           evidence: "Client tapped Send; SMS sent to agreed test number.",
           reviewOutcome: "sent",
+          staffDemonstrated: true,
+          staffDemonstratedBy: "Jordan Patel",
+          staffDemonstratedAt: nowISO(5),
           completedBy: "Jordan Patel",
           completedAt: nowISO(5),
         };
@@ -435,6 +442,10 @@ export function seedState(): AppState {
           ...it,
           status: "done",
           evidence: "Client entered test contact and saved.",
+          // Staff demonstrated first, then client performed after the demo.
+          staffDemonstrated: true,
+          staffDemonstratedBy: "Sam Rivera",
+          staffDemonstratedAt: nowISO(10),
           completedBy: "Sam Rivera",
           completedAt: nowISO(10),
         };
@@ -468,6 +479,10 @@ export function seedState(): AppState {
           status: "done",
           evidence: "Client tapped send; reflected in conversation.",
           reviewOutcome: "sent",
+          // Staff demonstrated first, then client performed after the demo.
+          staffDemonstrated: true,
+          staffDemonstratedBy: "Sam Rivera",
+          staffDemonstratedAt: nowISO(10),
           completedBy: "Sam Rivera",
           completedAt: nowISO(10),
         };
@@ -522,7 +537,8 @@ export function seedState(): AppState {
           walkthroughAt: nowISO(10),
           walkthroughBy: "Sam Rivera",
           walkthroughNotes: "Walked through adding a lead verbally on the call (not a sent guide).",
-          notApplicableReason: "No mobile add-lead guide URL configured yet; walkthrough provided on call.",
+          notApplicableReason:
+            "No mobile add-lead guide URL configured yet; walkthrough provided on call.",
           acknowledgedByReviewer: true,
           audit: [
             audit(

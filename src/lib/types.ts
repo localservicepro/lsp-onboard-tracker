@@ -62,6 +62,12 @@ export interface CallItem {
   guideDerived?: boolean | undefined;
   // Help text / guide link id hint copied from the template.
   helpText?: string | undefined;
+  // Demo & Client Practice: staff demonstrated the task (does NOT complete it).
+  // Only "Client performed" (status === "done" + evidence) counts as completion.
+  demoPractice?: boolean | undefined;
+  staffDemonstrated?: boolean | undefined;
+  staffDemonstratedBy?: string | undefined;
+  staffDemonstratedAt?: string | undefined;
   audit: AuditEntry[];
 }
 
@@ -147,6 +153,7 @@ export interface TemplateItem {
   // records (sent-valid or exempted) and is NOT independently editable. It
   // becomes Done only when every required guide is satisfied or exempted.
   guideDerived?: boolean | undefined;
+  demoPractice?: boolean | undefined;
 }
 
 export interface ChecklistTemplate {
@@ -258,7 +265,12 @@ export const DEFAULT_ONBOARDING_ITEMS: Omit<TemplateItem, "id">[] = [
     kind: "client_action",
     required: true,
   },
-  { label: "Client manually adds an agreed contact", kind: "client_action", required: true },
+  {
+    label: "Client manually adds an agreed contact",
+    kind: "client_action",
+    required: true,
+    demoPractice: true,
+  },
   { label: "Client finds the saved contact", kind: "client_action", required: true },
   { label: "Client opens the review-request feature", kind: "client_action", required: true },
   {
@@ -271,6 +283,7 @@ export const DEFAULT_ONBOARDING_ITEMS: Omit<TemplateItem, "id">[] = [
     kind: "client_action",
     required: true,
     reviewSend: true,
+    demoPractice: true,
   },
   {
     label: "Staff checks the recorded result",

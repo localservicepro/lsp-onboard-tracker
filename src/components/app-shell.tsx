@@ -66,10 +66,10 @@ export function AppShell({ children }: { children: ReactNode }) {
       <footer className="mx-auto max-w-6xl px-4 pb-10 pt-6">
         <div className="rounded-lg border border-dashed border-border bg-card/50 p-3 text-xs text-muted-foreground">
           <strong className="font-medium text-foreground">Prototype — this session only:</strong>{" "}
-          this tool uses synthetic demo data held in browser memory. Reloading the page may lose your
-          changes, and records are not shared across browsers or staff. Do not enter real client PII or
-          credentials. Secure staff authentication and shared persistent storage are required before
-          real client use.
+          this tool uses synthetic demo data held in browser memory. Reloading the page may lose
+          your changes, and records are not shared across browsers or staff. Do not enter real
+          client PII or credentials. Secure staff authentication and shared persistent storage are
+          required before real client use.
         </div>
       </footer>
     </div>

@@ -6,7 +6,9 @@ import {
   callCompletionBlock,
   callItemProgress,
   isItemDone,
+  isItemSatisfied,
   isGuideSentValid,
+  isGuideExempt,
   isGuideOutstanding,
   guideDerivedStatus,
   effectiveItem,
@@ -58,6 +60,34 @@ describe("LSP Onboarding Checklist — acceptance rules", () => {
     expect(isItemDone(demo)).toBe(false);
     demo.evidence = "Client added test contact.";
     expect(isItemDone(demo)).toBe(true);
+  });
+
+  it("checking 'Staff demonstrated' alone never completes a client practical task", () => {
+    // A demoPractice item with staffDemonstrated=true but status not 'done'
+    // must NOT count as completed, and must not inflate client-completed progress.
+    const demoOnly: CallItem = {
+      id: "y",
+      label: "Client manually adds an agreed contact",
+      kind: "client_action",
+      required: true,
+      status: "not_checked",
+      demoPractice: true,
+      staffDemonstrated: true,
+      staffDemonstratedBy: "Sam Rivera",
+      staffDemonstratedAt: new Date().toISOString(),
+      audit: [],
+    };
+    expect(isItemDone(demoOnly)).toBe(false);
+    expect(isItemSatisfied(demoOnly)).toBe(false);
+    // Only status 'done' + evidence counts as client completion.
+    const performed: CallItem = {
+      ...demoOnly,
+      status: "done",
+      evidence: "Client added the contact after the demo.",
+      completedBy: "Sam Rivera",
+      completedAt: new Date().toISOString(),
+    };
+    expect(isItemDone(performed)).toBe(true);
   });
 
   it("client completion cannot be saved without confirmation and evidence", () => {
@@ -127,10 +157,15 @@ describe("LSP Onboarding Checklist — acceptance rules", () => {
     const harbor = state.clients.find((c) => c.businessName === "Harbor Coffee Roasters")!;
     const harborOnb = harbor.calls.find((c) => c.type === "onboarding")!;
     const addLead = harborOnb.guides.find((g) => g.guideId === "guide-add-lead")!;
+    // Walkthrough was recorded (migrated from the old verbal-walkthrough model).
     expect(addLead.walkthroughProvided).toBe(true);
+    // But it is NOT a sent guide.
     expect(addLead.sent).toBe(false);
     expect(isGuideSentValid(addLead, guides)).toBe(false);
-    expect(isGuideOutstanding(addLead, guides)).toBe(true);
+    // Harbor exempted the no-URL guide (reason + reviewer ack), so it is not
+    // outstanding — but it is also NOT a verified/sent guide.
+    expect(isGuideExempt(addLead)).toBe(true);
+    expect(isGuideOutstanding(addLead, guides)).toBe(false);
   });
 
   it("summaries show readable guide names, not internal IDs", () => {
@@ -143,6 +178,54 @@ describe("LSP Onboarding Checklist — acceptance rules", () => {
     expect(summary).toContain("Add a lead manually in the phone app");
     const clientSummary = buildClientSummary(harbor, guides);
     expect(clientSummary).not.toContain("guide-");
+  });
+
+  it("summaries distinguish staff demonstrated vs client performed vs needs practice", () => {
+    const harbor = state.clients.find((c) => c.businessName === "Harbor Coffee Roasters")!;
+    const harborOnb = harbor.calls.find((c) => c.type === "onboarding")!;
+    // Harbor's two demoPractice tasks were demonstrated then performed.
+    const summary = buildCallSummary(harbor, harborOnb, guides);
+    expect(summary).toContain("CLIENT SUCCESSFULLY PERFORMED");
+    // Construct a call where a demoPractice task is demonstrated but NOT performed.
+    const demoOnlyCall: Call = {
+      ...harborOnb,
+      id: "call-demoonly",
+      items: harborOnb.items.map((it) =>
+        it.label.startsWith("Client manually adds")
+          ? {
+              ...it,
+              status: "not_checked" as const,
+              staffDemonstrated: true,
+              staffDemonstratedBy: "Sam Rivera",
+              staffDemonstratedAt: new Date().toISOString(),
+              completedBy: undefined,
+              completedAt: undefined,
+              evidence: undefined,
+            }
+          : it,
+      ),
+    };
+    const demoSummary = buildCallSummary(harbor, demoOnlyCall, guides);
+    expect(demoSummary).toContain("STAFF DEMONSTRATED ONLY");
+    // And a needs-practice item shows under "CLIENT NEEDS MORE PRACTICE".
+    const needsPracticeCall: Call = {
+      ...harborOnb,
+      id: "call-needspractice",
+      items: harborOnb.items.map((it) =>
+        it.label.startsWith("Client manually adds")
+          ? {
+              ...it,
+              status: "needs_help" as const,
+              issue: "Client could not complete after demo",
+              nextAction: "Retry next call",
+            }
+          : it,
+      ),
+    };
+    const npSummary = buildCallSummary(harbor, needsPracticeCall, guides);
+    expect(npSummary).toContain("CLIENT NEEDS MORE PRACTICE");
+    const clientSummary = buildClientSummary(harbor, guides);
+    expect(clientSummary).toContain("CLIENT PRACTICE:");
   });
 
   it("Harbor (both calls completed) derives completed; Northwind derives needs_followup", () => {

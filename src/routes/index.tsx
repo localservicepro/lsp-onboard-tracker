@@ -111,8 +111,8 @@ function Dashboard() {
             Choose a client, start the appropriate call, and update the checklist as you go.{" "}
             <span className="text-foreground/80">Add Client</span> for a new client,{" "}
             <span className="text-foreground/80">Start Call</span> for a new session,{" "}
-            <span className="text-foreground/80">Continue Call</span> for an unfinished one. A client
-            name opens its details and history.
+            <span className="text-foreground/80">Continue Call</span> for an unfinished one. A
+            client name opens its details and history.
           </p>
         </div>
         <button

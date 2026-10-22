@@ -73,10 +73,29 @@ export function itemStatusLabel(item: CallItem): string {
   return "Not checked";
 }
 
+// ---- Demo & Client Practice ----
+// Staff demonstrated the task (does NOT complete it). Only "Client performed"
+// (status === "done" + evidence) counts as practical completion.
+export function isItemDemonstrated(item: CallItem): boolean {
+  return !!item.staffDemonstrated;
+}
+
+export function demoPracticeStatusLabel(item: CallItem): string {
+  if (item.status === "done") return "Client performed";
+  if (item.status === "needs_help") return "Needs help";
+  if (item.status === "not_applicable") return "Not applicable";
+  if (item.staffDemonstrated) return "Staff demonstrated";
+  return "Not checked";
+}
+
 // ---- Guide-derived item status ----
 // A guideDerived staff_check is auto-calculated from the call's guide records.
 // Returns the effective ItemStatus the item should display/evaluate as.
-export function guideDerivedStatus(call: Call, item: CallItem, guides: GuideLink[] = []): CallItem["status"] {
+export function guideDerivedStatus(
+  call: Call,
+  item: CallItem,
+  guides: GuideLink[] = [],
+): CallItem["status"] {
   if (!item.guideDerived) return item.status;
   const records = call.guides;
   if (records.length === 0) return "not_checked";
@@ -85,9 +104,7 @@ export function guideDerivedStatus(call: Call, item: CallItem, guides: GuideLink
   if (allOk) return "done";
   // If any guide has an actual recorded issue (marked sent but invalid), that's
   // a real problem → needs_help. Otherwise it's simply outstanding → not_checked.
-  const hasIssue = records.some(
-    (g) => g.sent && !isGuideSentValid(g, guides) && !isGuideExempt(g),
-  );
+  const hasIssue = records.some((g) => g.sent && !isGuideSentValid(g, guides) && !isGuideExempt(g));
   return hasIssue ? "needs_help" : "not_checked";
 }
 
