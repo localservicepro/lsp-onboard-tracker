@@ -6,9 +6,9 @@ import { outstandingActions, type FollowUpAction } from "../lib/completion";
 export const Route = createFileRoute("/follow-up")({
   head: () => ({
     meta: [
-      { title: "Follow-up — LSP Onboarding Checklist" },
+      { title: "Follow-up — LSP Onboarding Tracker" },
       { name: "description", content: "Outstanding onboarding actions grouped by owner." },
-      { property: "og:title", content: "Follow-up — LSP Onboarding Checklist" },
+      { property: "og:title", content: "Follow-up — LSP Onboarding Tracker" },
       { property: "og:description", content: "Outstanding onboarding actions grouped by owner." },
     ],
   }),

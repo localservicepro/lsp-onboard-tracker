@@ -9,13 +9,13 @@ import { StatusBadge } from "../components/status-badge";
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "Dashboard — LSP Onboarding Checklist" },
+      { title: "Dashboard — LSP Onboarding Tracker" },
       {
         name: "description",
         content:
           "Staff dashboard for client onboarding calls — progress, blockers and next actions.",
       },
-      { property: "og:title", content: "Dashboard — LSP Onboarding Checklist" },
+      { property: "og:title", content: "Dashboard — LSP Onboarding Tracker" },
       {
         property: "og:description",
         content:
@@ -105,7 +105,7 @@ function Dashboard() {
             Internal Staff Portal
           </span>
           <h1 className="font-display text-2xl sm:text-3xl font-extrabold tracking-tight text-foreground">
-            LSP Onboarding Checklist
+            LSP Onboarding Tracker
           </h1>
           <p className="mt-1 text-xs sm:text-sm text-muted-foreground max-w-2xl">
             Choose a client, start the appropriate call, and update the checklist as you go.{" "}

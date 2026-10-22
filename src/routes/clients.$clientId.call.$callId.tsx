@@ -12,12 +12,12 @@ import { toast } from "sonner";
 export const Route = createFileRoute("/clients/$clientId/call/$callId")({
   head: () => ({
     meta: [
-      { title: "Live Call — LSP Onboarding Checklist" },
+      { title: "Live Call — LSP Onboarding Tracker" },
       {
         name: "description",
         content: "Focused checklist usable during a live onboarding or connection call.",
       },
-      { property: "og:title", content: "Live Call — LSP Onboarding Checklist" },
+      { property: "og:title", content: "Live Call — LSP Onboarding Tracker" },
       { property: "og:description", content: "Focused checklist usable during a live call." },
     ],
   }),

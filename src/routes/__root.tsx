@@ -79,23 +79,24 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "LSP Onboarding Checklist" },
+      { title: "LSP Onboarding Tracker" },
       {
         name: "description",
         content:
-          "Staff tool for tracking client onboarding calls — connections, practical skills and follow-up.",
+          "Internal staff tool for tracking client onboarding calls — connections, practical skills and follow-up.",
       },
-      { name: "author", content: "LSP" },
-      { property: "og:title", content: "LSP Onboarding Checklist" },
+      { name: "author", content: "Local Service Pro" },
+      { property: "og:title", content: "LSP Onboarding Tracker" },
       {
         property: "og:description",
         content:
-          "Staff tool for tracking client onboarding calls — connections, practical skills and follow-up.",
+          "Internal staff tool for tracking client onboarding calls — connections, practical skills and follow-up.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
     ],
     links: [
+      { rel: "icon", type: "image/webp", href: "https://vibe.filesafe.space/1792647195569112710/attachments/a6da6e71-b869-45f1-81e7-b5d53e6c1f4f.webp" },
       { rel: "stylesheet", href: appCss },
       { rel: "preconnect", href: "https://fonts.googleapis.com" },
       { rel: "preconnect", href: "https://fonts.gstatic.com", crossOrigin: "anonymous" },

@@ -7,12 +7,12 @@ import { CALL_TYPE_LABEL } from "../lib/types";
 export const Route = createFileRoute("/settings")({
   head: () => ({
     meta: [
-      { title: "Settings — LSP Onboarding Checklist" },
+      { title: "Settings — LSP Onboarding Tracker" },
       {
         name: "description",
         content: "Configure guide links, team members and editable checklist templates.",
       },
-      { property: "og:title", content: "Settings — LSP Onboarding Checklist" },
+      { property: "og:title", content: "Settings — LSP Onboarding Tracker" },
       {
         property: "og:description",
         content: "Configure guide links, team members and checklist templates.",

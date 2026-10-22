@@ -18,12 +18,12 @@ import { inputCls } from "../components/client-sections";
 export const Route = createFileRoute("/clients/$clientId/")({
   head: () => ({
     meta: [
-      { title: "Client Detail — LSP Onboarding Checklist" },
+      { title: "Client Detail — LSP Onboarding Tracker" },
       {
         name: "description",
         content: "Connection checklist, practical tasks, guides and call history for a client.",
       },
-      { property: "og:title", content: "Client Detail — LSP Onboarding Checklist" },
+      { property: "og:title", content: "Client Detail — LSP Onboarding Tracker" },
       {
         property: "og:description",
         content: "Connection checklist, practical tasks, guides and call history.",

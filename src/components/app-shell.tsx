@@ -65,8 +65,12 @@ export function AppShell({ children }: { children: ReactNode }) {
     return (
       <div className="grid min-h-screen place-items-center bg-background px-4">
         <div className="max-w-md text-center">
-          <div className="mb-4 grid h-12 w-12 place-items-center rounded-xl bg-primary font-display text-xl font-bold text-primary-foreground">
-            L
+          <div className="mb-4 flex justify-center">
+            <img
+              src="https://vibe.filesafe.space/1792647195569112710/attachments/a6da6e71-b869-45f1-81e7-b5d53e6c1f4f.webp"
+              alt="Local Service Pro"
+              className="h-16 w-16 object-contain"
+            />
           </div>
           <h1 className="font-display text-xl font-bold text-foreground">Account not approved</h1>
           <p className="mt-2 text-sm text-muted-foreground">
@@ -108,12 +112,21 @@ function ShellContent({ children }: { children: ReactNode }) {
     <div className="min-h-screen bg-background text-foreground">
       <header className="sticky top-0 z-30 border-b border-border bg-card/80 backdrop-blur-md">
         <div className="mx-auto flex max-w-6xl items-center gap-3 px-4 py-3">
-          <Link to="/" className="flex items-center gap-2.5">
-            <span className="grid h-9 w-9 place-items-center rounded-lg bg-primary text-primary-foreground font-display font-bold">
-              L
-            </span>
-            <span className="hidden font-display text-lg font-semibold tracking-tight sm:block">
-              LSP Onboarding
+          <Link to="/" className="flex items-center gap-2.5 transition-opacity hover:opacity-90">
+            {/* Horizontal wordmark on screens >= sm */}
+            <img
+              src="https://vibe.filesafe.space/1792647195569112710/attachments/6cdcd933-38bc-4d1d-8e69-bf13a7fad619.webp"
+              alt="Local Service Pro"
+              className="hidden h-9 w-auto object-contain sm:block"
+            />
+            {/* Compact icon-only logo on mobile */}
+            <img
+              src="https://vibe.filesafe.space/1792647195569112710/attachments/a6da6e71-b869-45f1-81e7-b5d53e6c1f4f.webp"
+              alt="Local Service Pro"
+              className="h-8 w-8 object-contain sm:hidden"
+            />
+            <span className="font-display text-sm font-semibold tracking-tight text-foreground sm:text-base">
+              Onboarding Tracker
             </span>
           </Link>
           <nav className="ml-auto flex items-center gap-1">
@@ -177,9 +190,9 @@ function ShellContent({ children }: { children: ReactNode }) {
       </main>
       <footer className="mx-auto max-w-6xl px-4 pb-10 pt-6">
         <div className="rounded-md border border-border/70 bg-card/40 px-3 py-1.5 text-[11px] text-muted-foreground">
-          <strong className="font-medium text-foreground/90">Cloud-connected</strong> — records are
-          stored in the Cloud database. Access requires approved staff sign-in. Email notifications
-          require provider setup before live use.
+          <strong className="font-medium text-foreground/90">LSP Onboarding Tracker</strong> — Cloud-connected
+          database storage. Access requires approved staff sign-in. Email notifications require
+          provider setup before live use.
         </div>
       </footer>
     </div>
@@ -214,10 +227,14 @@ function SignInScreen({
     <div className="grid min-h-screen place-items-center bg-background px-4">
       <div className="w-full max-w-sm">
         <div className="mb-6 text-center">
-          <div className="mx-auto mb-3 grid h-12 w-12 place-items-center rounded-xl bg-primary font-display text-xl font-bold text-primary-foreground">
-            L
+          <div className="mb-3 flex justify-center">
+            <img
+              src="https://vibe.filesafe.space/1792647195569112710/attachments/6cdcd933-38bc-4d1d-8e69-bf13a7fad619.webp"
+              alt="Local Service Pro"
+              className="h-12 w-auto max-w-[200px] object-contain"
+            />
           </div>
-          <h1 className="font-display text-xl font-bold text-foreground">LSP Onboarding</h1>
+          <h1 className="font-display text-xl font-bold text-foreground">LSP Onboarding Tracker</h1>
           <p className="mt-1 text-xs text-muted-foreground">Staff sign-in required</p>
         </div>
         <form

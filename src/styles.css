@@ -5,10 +5,12 @@
 @custom-variant dark (&:is(.dark *));
 
 /*
- * LSP Onboarding Checklist — Design System
- * Theme inspired by Local Service Pro (LSP) reference design:
- * Near-black navy background, electric-blue primary buttons/highlights,
- * cyan accents, dark navy cards with subtle glowing borders.
+ * LSP Onboarding Tracker — Design System
+ * Official Local Service Pro (LSP) brand theme:
+ * Extracted logo colors:
+ *   - Brand Cyan / Turquoise: oklch(0.76 0.135 220) / #34c4e7 (highlights, focus, active nav, icons)
+ *   - Brand Deep Blue: oklch(0.50 0.175 255) / #0062c4 (primary buttons, active accents, brand elements)
+ *   - Dark Navy background: oklch(0.13 0.03 250) (cards, popovers, surfaces)
  */
 
 @theme inline {
@@ -52,7 +54,7 @@
 :root {
   --radius: 0.75rem;
 
-  /* LSP Dark Navy & Electric Blue Palette */
+  /* LSP Dark Navy, Deep Blue & Brand Cyan/Turquoise Palette */
   --background: oklch(0.13 0.03 250); /* Deep dark navy background */
   --foreground: oklch(0.98 0.005 250); /* Bright crisp white text */
 
@@ -62,16 +64,18 @@
   --popover: oklch(0.18 0.035 250);
   --popover-foreground: oklch(0.98 0.005 250);
 
-  --primary: oklch(0.58 0.22 250); /* Electric blue primary button */
+  /* Deep Blue extracted from Local Service Pro logo: oklch(0.50 0.175 255) */
+  --primary: oklch(0.50 0.175 255);
   --primary-foreground: oklch(0.99 0 0);
 
   --secondary: oklch(0.22 0.04 250); /* Slate navy secondary bg */
-  --secondary-foreground: oklch(0.9 0.01 250);
+  --secondary-foreground: oklch(0.90 0.01 250);
 
   --muted: oklch(0.22 0.03 250);
   --muted-foreground: oklch(0.68 0.03 250); /* Muted blue-grey supporting text */
 
-  --accent: oklch(0.72 0.18 210); /* Vibrant Cyan highlight / links */
+  /* Cyan/Turquoise extracted from Local Service Pro logo: oklch(0.76 0.135 220) */
+  --accent: oklch(0.76 0.135 220);
   --accent-foreground: oklch(0.12 0.04 250);
 
   --destructive: oklch(0.62 0.22 25); /* Blocked red */
@@ -79,11 +83,11 @@
 
   --border: oklch(0.28 0.04 250); /* Subtle glowing blue-navy border */
   --input: oklch(0.26 0.04 250);
-  --ring: oklch(0.72 0.18 210);
+  --ring: oklch(0.76 0.135 220); /* Cyan focus indicator */
 
   --chart-1: oklch(0.68 0.18 150); /* Accessible Green for Completed */
-  --chart-2: oklch(0.58 0.22 250); /* Electric blue for In Progress */
-  --chart-3: oklch(0.72 0.18 210); /* Cyan for highlight */
+  --chart-2: oklch(0.50 0.175 255); /* Deep Blue for In Progress */
+  --chart-3: oklch(0.76 0.135 220); /* Cyan/Turquoise for Highlights */
   --chart-4: oklch(0.78 0.16 75); /* Amber for pending */
   --chart-5: oklch(0.62 0.22 25); /* Red for blocked */
 }
