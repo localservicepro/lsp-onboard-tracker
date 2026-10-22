@@ -1,0 +1,110 @@
+import { createFileRoute, Link } from "@tanstack/react-router";
+import { useMemo, useState } from "react";
+import { useStore } from "../lib/store";
+import { unresolvedBlockers } from "../lib/completion";
+
+export const Route = createFileRoute("/follow-up")({
+  head: () => ({
+    meta: [
+      { title: "Follow-up — LSP Onboarding Checklist" },
+      { name: "description", content: "Outstanding onboarding actions grouped by owner." },
+      { property: "og:title", content: "Follow-up — LSP Onboarding Checklist" },
+      { property: "og:description", content: "Outstanding onboarding actions grouped by owner." },
+    ],
+  }),
+  component: FollowUpPage,
+});
+
+interface Action {
+  clientId: string;
+  businessName: string;
+  owner: string;
+  kind: "blocker" | "guide";
+  summary: string;
+  nextAction?: string | undefined;
+  detail?: string | undefined;
+}
+
+function FollowUpPage() {
+  const { state } = useStore();
+  const [owner, setOwner] = useState("all");
+
+  const actions = useMemo<Action[]>(() => {
+    const out: Action[] = [];
+    for (const c of state.clients) {
+      for (const b of unresolvedBlockers(c)) {
+        out.push({ clientId: c.id, businessName: c.businessName, owner: b.owner, kind: "blocker", summary: b.summary, nextAction: b.nextAction });
+      }
+      for (const g of c.guides) {
+        if (!g.sent) {
+          const def = state.settings.guides.find((d) => d.id === g.guideId);
+          out.push({ clientId: c.id, businessName: c.businessName, owner: c.assignedTeamMember, kind: "guide", summary: `Guide not sent: ${def?.label ?? g.guideId}`, detail: def?.url ? undefined : "Guide link not added" });
+        }
+      }
+    }
+    return out;
+  }, [state]);
+
+  const owners = useMemo(() => {
+    const set = new Set<string>();
+    actions.forEach((a) => set.add(a.owner));
+    return Array.from(set).sort();
+  }, [actions]);
+
+  const filtered = owner === "all" ? actions : actions.filter((a) => a.owner === owner);
+  const byOwner = useMemo(() => {
+    const map = new Map<string, Action[]>();
+    filtered.forEach((a) => {
+      const arr = map.get(a.owner) ?? [];
+      arr.push(a);
+      map.set(a.owner, arr);
+    });
+    return Array.from(map.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+  }, [filtered]);
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h1 className="font-display text-2xl font-bold tracking-tight">Follow-up</h1>
+        <p className="mt-1 text-sm text-muted-foreground">Outstanding onboarding actions grouped by owner.</p>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-xs text-muted-foreground">Filter by owner:</span>
+        <select value={owner} onChange={(e) => setOwner(e.target.value)} className="rounded-md border border-input bg-card px-3 py-2 text-sm">
+          <option value="all">All owners ({actions.length})</option>
+          {owners.map((o) => <option key={o} value={o}>{o}</option>)}
+        </select>
+      </div>
+
+      {byOwner.length === 0 && (
+        <div className="rounded-lg border border-border bg-card p-6 text-center text-sm text-muted-foreground">
+          No outstanding actions. 🎉
+        </div>
+      )}
+
+      <div className="space-y-4">
+        {byOwner.map(([name, items]) => (
+          <section key={name} className="rounded-lg border border-border bg-card p-4">
+            <div className="flex items-center justify-between">
+              <h2 className="font-display text-lg font-semibold">{name}</h2>
+              <span className="text-xs text-muted-foreground">{items.length} action(s)</span>
+            </div>
+            <div className="mt-3 space-y-2">
+              {items.map((a, i) => (
+                <div key={i} className="rounded-md border border-border bg-background p-3 text-sm">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="font-medium">{a.summary}</div>
+                    <Link to="/clients/$clientId" params={{ clientId: a.clientId }} className="text-xs text-primary underline">Open {a.businessName}</Link>
+                  </div>
+                  {a.nextAction && <div className="mt-1 text-xs text-muted-foreground">Next action: {a.nextAction}</div>}
+                  {a.detail && <div className="mt-1 text-xs text-muted-foreground">{a.detail}</div>}
+                </div>
+              ))}
+            </div>
+          </section>
+        ))}
+      </div>
+    </div>
+  );
+}

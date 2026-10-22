@@ -10,33 +10,89 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as FollowUpRouteImport } from './routes/follow-up'
+import { Route as SettingsRouteImport } from './routes/settings'
+import { Route as ClientsClientIdRouteImport } from './routes/clients.$clientId'
+import { Route as ClientsClientIdCallCallIdRouteImport } from './routes/clients.$clientId.call.$callId'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const FollowUpRoute = FollowUpRouteImport.update({
+  id: '/follow-up',
+  path: '/follow-up',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SettingsRoute = SettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ClientsClientIdRoute = ClientsClientIdRouteImport.update({
+  id: '/clients/$clientId',
+  path: '/clients/$clientId',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ClientsClientIdCallCallIdRoute =
+  ClientsClientIdCallCallIdRouteImport.update({
+    id: '/call/$callId',
+    path: '/call/$callId',
+    getParentRoute: () => ClientsClientIdRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/follow-up': typeof FollowUpRoute
+  '/settings': typeof SettingsRoute
+  '/clients/$clientId': typeof ClientsClientIdRouteWithChildren
+  '/clients/$clientId/call/$callId': typeof ClientsClientIdCallCallIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/follow-up': typeof FollowUpRoute
+  '/settings': typeof SettingsRoute
+  '/clients/$clientId': typeof ClientsClientIdRouteWithChildren
+  '/clients/$clientId/call/$callId': typeof ClientsClientIdCallCallIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/follow-up': typeof FollowUpRoute
+  '/settings': typeof SettingsRoute
+  '/clients/$clientId': typeof ClientsClientIdRouteWithChildren
+  '/clients/$clientId/call/$callId': typeof ClientsClientIdCallCallIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/'
+  fullPaths:
+    | '/'
+    | '/follow-up'
+    | '/settings'
+    | '/clients/$clientId'
+    | '/clients/$clientId/call/$callId'
   fileRoutesByTo: FileRoutesByTo
-  to: '/'
-  id: '__root__' | '/'
+  to:
+    | '/'
+    | '/follow-up'
+    | '/settings'
+    | '/clients/$clientId'
+    | '/clients/$clientId/call/$callId'
+  id:
+    | '__root__'
+    | '/'
+    | '/follow-up'
+    | '/settings'
+    | '/clients/$clientId'
+    | '/clients/$clientId/call/$callId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  FollowUpRoute: typeof FollowUpRoute
+  SettingsRoute: typeof SettingsRoute
+  ClientsClientIdRoute: typeof ClientsClientIdRouteWithChildren
 }
 
 declare module '@tanstack/react-router' {
@@ -48,11 +104,54 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/follow-up': {
+      id: '/follow-up'
+      path: '/follow-up'
+      fullPath: '/follow-up'
+      preLoaderRoute: typeof FollowUpRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/settings': {
+      id: '/settings'
+      path: '/settings'
+      fullPath: '/settings'
+      preLoaderRoute: typeof SettingsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/clients/$clientId': {
+      id: '/clients/$clientId'
+      path: '/clients/$clientId'
+      fullPath: '/clients/$clientId'
+      preLoaderRoute: typeof ClientsClientIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/clients/$clientId/call/$callId': {
+      id: '/clients/$clientId/call/$callId'
+      path: '/call/$callId'
+      fullPath: '/clients/$clientId/call/$callId'
+      preLoaderRoute: typeof ClientsClientIdCallCallIdRouteImport
+      parentRoute: typeof ClientsClientIdRoute
+    }
   }
 }
 
+interface ClientsClientIdRouteChildren {
+  ClientsClientIdCallCallIdRoute: typeof ClientsClientIdCallCallIdRoute
+}
+
+const ClientsClientIdRouteChildren: ClientsClientIdRouteChildren = {
+  ClientsClientIdCallCallIdRoute: ClientsClientIdCallCallIdRoute,
+}
+
+const ClientsClientIdRouteWithChildren = ClientsClientIdRoute._addFileChildren(
+  ClientsClientIdRouteChildren,
+)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  FollowUpRoute: FollowUpRoute,
+  SettingsRoute: SettingsRoute,
+  ClientsClientIdRoute: ClientsClientIdRouteWithChildren,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
