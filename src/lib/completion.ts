@@ -12,14 +12,7 @@
 //    separate activity and never counts as guide delivery.
 //  - Not applicable requires a reason + reviewer acknowledgement.
 
-import type {
-  Client,
-  Call,
-  CallItem,
-  CallStatus,
-  GuideLink,
-  CallGuideRecord,
-} from "./types";
+import type { Client, Call, CallItem, CallStatus, GuideLink, CallGuideRecord } from "./types";
 
 export interface Progress {
   done: number;
@@ -107,10 +100,14 @@ export function callCompletionBlock(call: Call, guides: GuideLink[] = []): Compl
 
   // Invalid N/A (no reason or no reviewer acknowledgement).
   const invalidNa = call.items.filter(
-    (i) => i.status === "not_applicable" && (!i.notApplicableReason?.trim() || !i.acknowledgedByReviewer),
+    (i) =>
+      i.status === "not_applicable" &&
+      (!i.notApplicableReason?.trim() || !i.acknowledgedByReviewer),
   );
   if (invalidNa.length > 0) {
-    reasons.push(`${invalidNa.length} item(s) marked Not applicable without a reason or reviewer acknowledgement`);
+    reasons.push(
+      `${invalidNa.length} item(s) marked Not applicable without a reason or reviewer acknowledgement`,
+    );
   }
 
   // Needs-help items are actual issues — they block completion.
@@ -127,13 +124,18 @@ export function callCompletionBlock(call: Call, guides: GuideLink[] = []): Compl
   );
   if (outstandingUrlGuides.length > 0) {
     reasons.push(
-      `${outstandingUrlGuides.length} guide(s) with a configured link not sent or exempted (e.g. ${outstandingUrlGuides.map((g) => guideLabel(g, guides)).slice(0, 2).join(", ")})`,
+      `${outstandingUrlGuides.length} guide(s) with a configured link not sent or exempted (e.g. ${outstandingUrlGuides
+        .map((g) => guideLabel(g, guides))
+        .slice(0, 2)
+        .join(", ")})`,
     );
   }
   // Guides marked sent but invalid (no URL / "Guide link not added" / missing details).
   const invalidSent = call.guides.filter((g) => g.sent && !isGuideSentValid(g, guides));
   if (invalidSent.length > 0) {
-    reasons.push(`${invalidSent.length} guide(s) marked Sent without a valid supplied URL/version (verbal walkthrough is not a sent guide)`);
+    reasons.push(
+      `${invalidSent.length} guide(s) marked Sent without a valid supplied URL/version (verbal walkthrough is not a sent guide)`,
+    );
   }
 
   return { ok: reasons.length === 0, reasons };
@@ -163,8 +165,12 @@ export function deriveClientStatus(client: Client, guides: GuideLink[] = []): Ca
   if (calls.length === 0) return "not_started";
   if (calls.some((c) => deriveCallStatus(c, guides) === "needs_followup")) return "needs_followup";
 
-  const connDone = calls.some((c) => c.type === "connection" && deriveCallStatus(c, guides) === "completed");
-  const onbDone = calls.some((c) => c.type === "onboarding" && deriveCallStatus(c, guides) === "completed");
+  const connDone = calls.some(
+    (c) => c.type === "connection" && deriveCallStatus(c, guides) === "completed",
+  );
+  const onbDone = calls.some(
+    (c) => c.type === "onboarding" && deriveCallStatus(c, guides) === "completed",
+  );
   if (connDone && onbDone) return "completed";
 
   if (calls.every((c) => deriveCallStatus(c, guides) === "not_started")) return "not_started";
@@ -179,7 +185,10 @@ export function nextCallTypeForClient(client: Client): import("./types").CallTyp
 }
 
 // The latest unfinished call of a given type (for "Continue"), or null.
-export function unfinishedCallOfType(client: Client, type: import("./types").CallType): Call | null {
+export function unfinishedCallOfType(
+  client: Client,
+  type: import("./types").CallType,
+): Call | null {
   const of = client.calls.filter((c) => c.type === type && !c.finishedAt);
   if (of.length === 0) return null;
   const sorted = of.sort((a, b) => b.createdAt.localeCompare(a.createdAt));

@@ -1,11 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { useStore } from "../lib/store";
-import {
-  deriveCallStatus,
-  callCompletionBlock,
-  callItemProgress,
-} from "../lib/completion";
+import { deriveCallStatus, callCompletionBlock, callItemProgress } from "../lib/completion";
 import { CALL_TYPE_LABEL } from "../lib/types";
 import { StatusBadge } from "../components/status-badge";
 import { buildCallSummary, copyToClipboard } from "../lib/call-summary";
@@ -15,7 +11,10 @@ export const Route = createFileRoute("/clients/$clientId/call/$callId")({
   head: () => ({
     meta: [
       { title: "Live Call — LSP Onboarding Checklist" },
-      { name: "description", content: "Focused checklist usable during a live onboarding or connection call." },
+      {
+        name: "description",
+        content: "Focused checklist usable during a live onboarding or connection call.",
+      },
       { property: "og:title", content: "Live Call — LSP Onboarding Checklist" },
       { property: "og:description", content: "Focused checklist usable during a live call." },
     ],
@@ -28,14 +27,22 @@ function CallSessionPage() {
   const { state, setCallItem, setCallGuide, updateCall, finishCall } = useStore();
   const client = state.clients.find((c) => c.id === clientId);
   const call = client?.calls.find((c) => c.id === callId);
-  const [actor, setActor] = useState(call?.staffMember ?? state.settings.team[0]?.name ?? "Staff Member");
+  const [actor, setActor] = useState(
+    call?.staffMember ?? state.settings.team[0]?.name ?? "Staff Member",
+  );
   const [copied, setCopied] = useState(false);
 
   if (!client || !call) {
     return (
       <div className="space-y-4 rounded-2xl border border-border bg-card p-8 text-center">
         <p className="text-muted-foreground">Call session not found.</p>
-        <Link to="/clients/$clientId" params={{ clientId }} className="inline-flex rounded-xl bg-primary px-4 py-2 text-sm font-bold text-primary-foreground">Return to Client Record</Link>
+        <Link
+          to="/clients/$clientId"
+          params={{ clientId }}
+          className="inline-flex rounded-xl bg-primary px-4 py-2 text-sm font-bold text-primary-foreground"
+        >
+          Return to Client Record
+        </Link>
       </div>
     );
   }
@@ -60,20 +67,38 @@ function CallSessionPage() {
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/80 pb-4">
         <div>
-          <Link to="/clients/$clientId" params={{ clientId }} className="inline-flex items-center gap-1 text-xs font-semibold text-accent hover:underline">← Back to {client.businessName}</Link>
+          <Link
+            to="/clients/$clientId"
+            params={{ clientId }}
+            className="inline-flex items-center gap-1 text-xs font-semibold text-accent hover:underline"
+          >
+            ← Back to {client.businessName}
+          </Link>
           <h1 className="mt-1 font-display text-2xl sm:text-3xl font-extrabold tracking-tight text-foreground">
             {CALL_TYPE_LABEL[call.type]} Call
           </h1>
           <p className="mt-0.5 text-xs sm:text-sm text-muted-foreground">
-            <span className="font-semibold text-foreground">{client.businessName}</span> · {client.clientName} · {call.date}
+            <span className="font-semibold text-foreground">{client.businessName}</span> ·{" "}
+            {client.clientName} · {call.date}
             {client.accountContext && <> · {client.accountContext}</>}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <div className="flex items-center gap-2 rounded-xl border border-border bg-card px-3 py-1.5">
             <label className="text-xs font-semibold text-muted-foreground">Observing Staff:</label>
-            <select value={actor} onChange={(e) => { setActor(e.target.value); updateCall(client.id, call.id, { staffMember: e.target.value }, e.target.value); }} className="bg-transparent text-xs font-bold text-foreground outline-hidden cursor-pointer">
-              {team.map((t) => <option key={t.id} value={t.name} className="bg-card text-foreground">{t.name}</option>)}
+            <select
+              value={actor}
+              onChange={(e) => {
+                setActor(e.target.value);
+                updateCall(client.id, call.id, { staffMember: e.target.value }, e.target.value);
+              }}
+              className="bg-transparent text-xs font-bold text-foreground outline-hidden cursor-pointer"
+            >
+              {team.map((t) => (
+                <option key={t.id} value={t.name} className="bg-card text-foreground">
+                  {t.name}
+                </option>
+              ))}
             </select>
           </div>
           <StatusBadge status={cs} />
@@ -83,21 +108,43 @@ function CallSessionPage() {
       {/* Completion banner */}
       {!block.ok ? (
         <div className="rounded-2xl border-2 border-destructive/50 bg-destructive/10 p-4 text-sm">
-          <div className="flex items-center gap-2 font-bold text-destructive"><span className="h-2 w-2 rounded-full bg-destructive" />Call not complete ({block.reasons.length} issue{block.reasons.length === 1 ? "" : "s"})</div>
-          <ul className="mt-2 list-disc space-y-1 pl-5 text-xs text-destructive/90">{block.reasons.map((r, i) => <li key={i}>{r}</li>)}</ul>
+          <div className="flex items-center gap-2 font-bold text-destructive">
+            <span className="h-2 w-2 rounded-full bg-destructive" />
+            Call not complete ({block.reasons.length} issue{block.reasons.length === 1 ? "" : "s"})
+          </div>
+          <ul className="mt-2 list-disc space-y-1 pl-5 text-xs text-destructive/90">
+            {block.reasons.map((r, i) => (
+              <li key={i}>{r}</li>
+            ))}
+          </ul>
         </div>
       ) : (
-        <div className="rounded-2xl border-2 border-chart-1/50 bg-chart-1/10 p-4 text-sm font-bold text-chart-1 flex items-center gap-2"><span>✓</span><span>Checklist complete — all required items satisfied, no unresolved issues.</span></div>
+        <div className="rounded-2xl border-2 border-chart-1/50 bg-chart-1/10 p-4 text-sm font-bold text-chart-1 flex items-center gap-2">
+          <span>✓</span>
+          <span>Checklist complete — all required items satisfied, no unresolved issues.</span>
+        </div>
       )}
 
       {/* Client-led practical tasks */}
       {clientActions.length > 0 && (
         <section className="rounded-2xl border border-border bg-card p-5">
-          <h2 className="font-display text-lg font-bold text-foreground">Client-Led Practical Tasks</h2>
-          <p className="mt-1 text-xs text-muted-foreground">"Client did it" = staff observed the client personally perform it. A staff demonstration does NOT count. Staff + timestamp recorded automatically.</p>
+          <h2 className="font-display text-lg font-bold text-foreground">
+            Client-Led Practical Tasks
+          </h2>
+          <p className="mt-1 text-xs text-muted-foreground">
+            "Client did it" = staff observed the client personally perform it. A staff demonstration
+            does NOT count. Staff + timestamp recorded automatically.
+          </p>
           <div className="mt-3 space-y-3">
             {clientActions.map((it) => (
-              <CallItemRow key={it.id} item={it} actor={actor} onSet={(patch, reason) => setCallItem(client.id, call.id, it.id, patch, actor, reason)} />
+              <CallItemRow
+                key={it.id}
+                item={it}
+                actor={actor}
+                onSet={(patch, reason) =>
+                  setCallItem(client.id, call.id, it.id, patch, actor, reason)
+                }
+              />
             ))}
           </div>
         </section>
@@ -107,33 +154,76 @@ function CallSessionPage() {
       {staffChecks.length > 0 && (
         <section className="rounded-2xl border border-border bg-card p-5">
           <h2 className="font-display text-lg font-bold text-foreground">Staff Checks</h2>
-          <p className="mt-1 text-xs text-muted-foreground">Staff-only items use Done (not "Client did it"). These record verification only — they do not perform integrations or request credentials.</p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Staff-only items use Done (not "Client did it"). These record verification only — they
+            do not perform integrations or request credentials.
+          </p>
           <div className="mt-3 space-y-3">
             {staffChecks.map((it) => (
-              <CallItemRow key={it.id} item={it} actor={actor} onSet={(patch, reason) => setCallItem(client.id, call.id, it.id, patch, actor, reason)} />
+              <CallItemRow
+                key={it.id}
+                item={it}
+                actor={actor}
+                onSet={(patch, reason) =>
+                  setCallItem(client.id, call.id, it.id, patch, actor, reason)
+                }
+              />
             ))}
           </div>
         </section>
       )}
 
       {/* Guides */}
-      <CallGuidesSection call={call} actor={actor} guides={guides} onSetGuide={(guideId, patch, reason) => setCallGuide(client.id, call.id, guideId, patch, actor, reason)} />
+      <CallGuidesSection
+        call={call}
+        actor={actor}
+        guides={guides}
+        onSetGuide={(guideId, patch, reason) =>
+          setCallGuide(client.id, call.id, guideId, patch, actor, reason)
+        }
+      />
 
       {/* Notes + follow-up */}
       <section className="rounded-2xl border border-border bg-card p-5 space-y-3">
-        <h2 className="font-display text-lg font-bold text-foreground">Call Notes &amp; Follow-up</h2>
+        <h2 className="font-display text-lg font-bold text-foreground">
+          Call Notes &amp; Follow-up
+        </h2>
         <div>
           <span className="mb-1 block text-xs font-semibold text-muted-foreground">Call Notes</span>
-          <textarea className={inputCls} rows={3} placeholder="Short call notes..." defaultValue={call.notes ?? ""} onBlur={(e) => updateCall(client.id, call.id, { notes: e.target.value }, actor)} />
+          <textarea
+            className={inputCls}
+            rows={3}
+            placeholder="Short call notes..."
+            defaultValue={call.notes ?? ""}
+            onBlur={(e) => updateCall(client.id, call.id, { notes: e.target.value }, actor)}
+          />
         </div>
         <div className="grid gap-3 sm:grid-cols-2 text-xs">
           <div>
-            <span className="mb-1 block text-xs font-semibold text-muted-foreground">Follow-up Action</span>
-            <input className={inputCls} placeholder="What needs to happen next..." defaultValue={call.followUpAction ?? ""} onBlur={(e) => updateCall(client.id, call.id, { followUpAction: e.target.value }, actor)} />
+            <span className="mb-1 block text-xs font-semibold text-muted-foreground">
+              Follow-up Action
+            </span>
+            <input
+              className={inputCls}
+              placeholder="What needs to happen next..."
+              defaultValue={call.followUpAction ?? ""}
+              onBlur={(e) =>
+                updateCall(client.id, call.id, { followUpAction: e.target.value }, actor)
+              }
+            />
           </div>
           <div>
-            <span className="mb-1 block text-xs font-semibold text-muted-foreground">Follow-up Date</span>
-            <input type="date" className={inputCls} defaultValue={call.followUpDate ?? ""} onChange={(e) => updateCall(client.id, call.id, { followUpDate: e.target.value || undefined }, actor)} />
+            <span className="mb-1 block text-xs font-semibold text-muted-foreground">
+              Follow-up Date
+            </span>
+            <input
+              type="date"
+              className={inputCls}
+              defaultValue={call.followUpDate ?? ""}
+              onChange={(e) =>
+                updateCall(client.id, call.id, { followUpDate: e.target.value || undefined }, actor)
+              }
+            />
           </div>
         </div>
       </section>
@@ -143,18 +233,55 @@ function CallSessionPage() {
         <div className="flex items-center justify-between mb-2">
           <div>
             <h2 className="font-display text-lg font-bold text-foreground">Call Summary</h2>
-            <p className="text-xs text-muted-foreground">Readable guide names. Copying never sends anything.</p>
+            <p className="text-xs text-muted-foreground">
+              Readable guide names. Copying never sends anything.
+            </p>
           </div>
-          <button onClick={onCopy} className="rounded-xl bg-primary px-4 py-2 text-xs font-bold text-primary-foreground hover:bg-primary/90 cursor-pointer min-h-[40px]">{copied ? "✓ Copied!" : "📋 Copy Summary"}</button>
+          <button
+            onClick={onCopy}
+            className="rounded-xl bg-primary px-4 py-2 text-xs font-bold text-primary-foreground hover:bg-primary/90 cursor-pointer min-h-[40px]"
+          >
+            {copied ? "✓ Copied!" : "📋 Copy Summary"}
+          </button>
         </div>
-        <pre className="mt-3 max-h-80 overflow-auto whitespace-pre-wrap rounded-xl border border-border/80 bg-background/80 p-4 font-mono text-xs text-foreground">{buildCallSummary(client, call, guides)}</pre>
+        <pre className="mt-3 max-h-80 overflow-auto whitespace-pre-wrap rounded-xl border border-border/80 bg-background/80 p-4 font-mono text-xs text-foreground">
+          {buildCallSummary(client, call, guides)}
+        </pre>
       </section>
 
       {/* Finish */}
       <div className="flex flex-wrap justify-end gap-3 pt-2">
-        <Link to="/clients/$clientId" params={{ clientId }} className="rounded-xl border border-border bg-card px-4 py-2 text-xs font-bold text-foreground hover:bg-secondary min-h-[40px] inline-flex items-center">← Back to Client</Link>
-        <button onClick={() => updateCall(client.id, call.id, { followUpAction: call.followUpAction, followUpDate: call.followUpDate }, actor)} className="rounded-xl border border-border bg-card px-4 py-2 text-xs font-bold text-foreground hover:bg-secondary min-h-[40px]">Save (in-memory)</button>
-        <button onClick={() => finishCall(client.id, call.id, { followUpAction: call.followUpAction, followUpDate: call.followUpDate }, actor)} className="rounded-xl bg-primary px-5 py-2 text-xs font-bold text-primary-foreground shadow-md shadow-primary/20 hover:bg-primary/90 min-h-[40px]">
+        <Link
+          to="/clients/$clientId"
+          params={{ clientId }}
+          className="rounded-xl border border-border bg-card px-4 py-2 text-xs font-bold text-foreground hover:bg-secondary min-h-[40px] inline-flex items-center"
+        >
+          ← Back to Client
+        </Link>
+        <button
+          onClick={() =>
+            updateCall(
+              client.id,
+              call.id,
+              { followUpAction: call.followUpAction, followUpDate: call.followUpDate },
+              actor,
+            )
+          }
+          className="rounded-xl border border-border bg-card px-4 py-2 text-xs font-bold text-foreground hover:bg-secondary min-h-[40px]"
+        >
+          Save (in-memory)
+        </button>
+        <button
+          onClick={() =>
+            finishCall(
+              client.id,
+              call.id,
+              { followUpAction: call.followUpAction, followUpDate: call.followUpDate },
+              actor,
+            )
+          }
+          className="rounded-xl bg-primary px-5 py-2 text-xs font-bold text-primary-foreground shadow-md shadow-primary/20 hover:bg-primary/90 min-h-[40px]"
+        >
           {block.ok ? "Finish Call ✓" : "Finish Call (with follow-up)"}
         </button>
       </div>

@@ -38,13 +38,16 @@ export function buildCallSummary(client: Client, call: Call, guides: GuideLink[]
   lines.push(`Business: ${client.businessName}`);
   lines.push(`Client: ${client.clientName}`);
   lines.push(`Assigned Staff: ${client.assignedTeamMember}`);
-  lines.push(`Call Type: ${call.type === "connection" ? "Integration & Connection" : "Onboarding & Training"}`);
+  lines.push(
+    `Call Type: ${call.type === "connection" ? "Integration & Connection" : "Onboarding & Training"}`,
+  );
   lines.push(`Call Date: ${call.date}`);
   lines.push(`Observing Staff: ${call.staffMember}`);
   if (client.accountContext) lines.push(`Account Context: ${client.accountContext}`);
   lines.push(`This Call Status: ${callStatus.toUpperCase().replace("_", " ")}`);
   lines.push(`Client Overall Status: ${clientStatus.toUpperCase().replace("_", " ")}`);
-  if (client.isTestRecord) lines.push("NOTE: Internal test record — not a completed onboarding example.");
+  if (client.isTestRecord)
+    lines.push("NOTE: Internal test record — not a completed onboarding example.");
   lines.push("");
 
   // What was completed
@@ -55,7 +58,9 @@ export function buildCallSummary(client: Client, call: Call, guides: GuideLink[]
     completed.forEach((i) => {
       const ev = i.evidence ? ` — "${i.evidence}"` : "";
       const ro = i.reviewOutcome ? ` [review: ${i.reviewOutcome}]` : "";
-      lines.push(`  - [${i.kind === "client_action" ? "CLIENT DID IT" : "DONE"}] ${i.label}${ro}${ev}`);
+      lines.push(
+        `  - [${i.kind === "client_action" ? "CLIENT DID IT" : "DONE"}] ${i.label}${ro}${ev}`,
+      );
     });
   }
   lines.push("");
@@ -83,7 +88,12 @@ export function buildCallSummary(client: Client, call: Call, guides: GuideLink[]
 
   // Next call date
   if (client.nextCallDate) {
-    const t = client.nextCallType === "connection" ? "Integration & Connection" : client.nextCallType === "onboarding" ? "Onboarding & Training" : "Next call";
+    const t =
+      client.nextCallType === "connection"
+        ? "Integration & Connection"
+        : client.nextCallType === "onboarding"
+          ? "Onboarding & Training"
+          : "Next call";
     lines.push(`NEXT CALL: ${t} on ${client.nextCallDate}`);
     lines.push("");
   }
@@ -126,7 +136,10 @@ export function buildCallSummary(client: Client, call: Call, guides: GuideLink[]
   }
 
   // Approved exemptions
-  const allExempt = [...exempt.map((i) => ({ name: i.label, reason: i.notApplicableReason })), ...exemptGuides.map((g) => ({ name: guideLabel(g, guides), reason: g.notApplicableReason }))];
+  const allExempt = [
+    ...exempt.map((i) => ({ name: i.label, reason: i.notApplicableReason })),
+    ...exemptGuides.map((g) => ({ name: guideLabel(g, guides), reason: g.notApplicableReason })),
+  ];
   if (allExempt.length > 0) {
     lines.push(`APPROVED EXEMPTIONS (${allExempt.length}):`);
     allExempt.forEach((e) => lines.push(`  - ${e.name} (Reason: ${e.reason})`));
@@ -134,7 +147,9 @@ export function buildCallSummary(client: Client, call: Call, guides: GuideLink[]
   }
 
   if (notChecked.length > 0) {
-    lines.push(`NOT YET CHECKED (${notChecked.length}): ${notChecked.map((i) => i.label).join("; ")}`);
+    lines.push(
+      `NOT YET CHECKED (${notChecked.length}): ${notChecked.map((i) => i.label).join("; ")}`,
+    );
     lines.push("");
   }
 
@@ -160,7 +175,8 @@ export function buildClientSummary(client: Client, guides: GuideLink[] = []): st
   lines.push(`Assigned Staff: ${client.assignedTeamMember}`);
   if (client.accountContext) lines.push(`Account Context: ${client.accountContext}`);
   lines.push(`Overall Status: ${status.toUpperCase().replace("_", " ")}`);
-  if (client.isTestRecord) lines.push("NOTE: Internal test record — not a completed onboarding example.");
+  if (client.isTestRecord)
+    lines.push("NOTE: Internal test record — not a completed onboarding example.");
   lines.push("");
 
   // Calls
@@ -173,13 +189,23 @@ export function buildClientSummary(client: Client, guides: GuideLink[] = []): st
       .forEach((c) => {
         const cs = deriveCallStatus(c, guides);
         const block = callCompletionBlock(c, guides);
-        lines.push(`  - ${c.type === "connection" ? "Integration & Connection" : "Onboarding & Training"} on ${c.date} (${cs.replace("_", " ")}) — ${block.ok ? "complete" : `${block.reasons.length} issue(s)`}`);
+        lines.push(
+          `  - ${c.type === "connection" ? "Integration & Connection" : "Onboarding & Training"} on ${c.date} (${cs.replace("_", " ")}) — ${block.ok ? "complete" : `${block.reasons.length} issue(s)`}`,
+        );
       });
   }
   lines.push("");
 
   // Aggregated guides actually sent across all calls
-  const sentGuides = new Map<string, { name: string; channel?: string | undefined; sentBy?: string | undefined; sentAt?: string | undefined }>();
+  const sentGuides = new Map<
+    string,
+    {
+      name: string;
+      channel?: string | undefined;
+      sentBy?: string | undefined;
+      sentAt?: string | undefined;
+    }
+  >();
   const walkthroughs: { name: string; by?: string | undefined; at?: string | undefined }[] = [];
   const outstandingGuides: string[] = [];
   for (const c of client.calls) {
@@ -187,11 +213,18 @@ export function buildClientSummary(client: Client, guides: GuideLink[] = []): st
       const name = guideLabel(g, guides);
       if (isGuideSentValid(g, guides)) {
         if (!sentGuides.has(g.guideId)) {
-          sentGuides.set(g.guideId, { name, channel: g.channel, sentBy: g.sentBy, sentAt: g.sentAt });
+          sentGuides.set(g.guideId, {
+            name,
+            channel: g.channel,
+            sentBy: g.sentBy,
+            sentAt: g.sentAt,
+          });
         }
       }
-      if (g.walkthroughProvided) walkthroughs.push({ name, by: g.walkthroughBy, at: g.walkthroughAt });
-      if (isGuideOutstanding(g, guides)) outstandingGuides.push(name + (guideHasUrl(g, guides) ? "" : " [Guide link not added]"));
+      if (g.walkthroughProvided)
+        walkthroughs.push({ name, by: g.walkthroughBy, at: g.walkthroughAt });
+      if (isGuideOutstanding(g, guides))
+        outstandingGuides.push(name + (guideHasUrl(g, guides) ? "" : " [Guide link not added]"));
     }
   }
 
@@ -223,7 +256,13 @@ export function buildClientSummary(client: Client, guides: GuideLink[] = []): st
   }
 
   // Open follow-up actions across all calls
-  const openActions: { call: string; owner: string; summary: string; next?: string | undefined; due?: string | undefined }[] = [];
+  const openActions: {
+    call: string;
+    owner: string;
+    summary: string;
+    next?: string | undefined;
+    due?: string | undefined;
+  }[] = [];
   for (const c of client.calls) {
     for (const it of c.items) {
       if (itemNeedsFollowUp(it)) {
@@ -236,19 +275,31 @@ export function buildClientSummary(client: Client, guides: GuideLink[] = []): st
       }
     }
     if (c.followUpAction) {
-      openActions.push({ call: c.type === "connection" ? "Connection" : "Onboarding", owner: client.assignedTeamMember, summary: c.followUpAction, due: c.followUpDate });
+      openActions.push({
+        call: c.type === "connection" ? "Connection" : "Onboarding",
+        owner: client.assignedTeamMember,
+        summary: c.followUpAction,
+        due: c.followUpDate,
+      });
     }
   }
   if (openActions.length > 0) {
     lines.push(`OPEN FOLLOW-UP ACTIONS (${openActions.length}):`);
     openActions.forEach((a) => {
-      lines.push(`  - [${a.call}] ${a.summary} (Owner: ${a.owner}${a.next ? `; Next: ${a.next}` : ""}${a.due ? `; Due: ${a.due}` : ""})`);
+      lines.push(
+        `  - [${a.call}] ${a.summary} (Owner: ${a.owner}${a.next ? `; Next: ${a.next}` : ""}${a.due ? `; Due: ${a.due}` : ""})`,
+      );
     });
     lines.push("");
   }
 
   if (client.nextCallDate) {
-    const t = client.nextCallType === "connection" ? "Integration & Connection" : client.nextCallType === "onboarding" ? "Onboarding & Training" : "Next call";
+    const t =
+      client.nextCallType === "connection"
+        ? "Integration & Connection"
+        : client.nextCallType === "onboarding"
+          ? "Onboarding & Training"
+          : "Next call";
     lines.push(`NEXT CALL: ${t} on ${client.nextCallDate}`);
     lines.push("");
   }

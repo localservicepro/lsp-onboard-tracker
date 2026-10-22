@@ -20,7 +20,9 @@ export function AppShell({ children }: { children: ReactNode }) {
   const { state } = useStore();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const guides = state.settings.guides;
-  const needsFollowUpCount = state.clients.filter((c) => deriveClientStatus(c, guides) === "needs_followup").length;
+  const needsFollowUpCount = state.clients.filter(
+    (c) => deriveClientStatus(c, guides) === "needs_followup",
+  ).length;
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -64,10 +66,10 @@ export function AppShell({ children }: { children: ReactNode }) {
       <footer className="mx-auto max-w-6xl px-4 pb-10 pt-6">
         <div className="rounded-lg border border-dashed border-border bg-card/50 p-3 text-xs text-muted-foreground">
           <strong className="font-medium text-foreground">Prototype notice:</strong> this tool uses
-          synthetic demo data held in browser memory. It is not connected to live client records, and
-          browser memory is not a secure shared store — records may be lost on reload and are not
-          available in another browser. Do not enter real client PII or credentials. Secure staff
-          authentication and shared persistent storage are required before real client use.
+          synthetic demo data held in browser memory. It is not connected to live client records,
+          and browser memory is not a secure shared store — records may be lost on reload and are
+          not available in another browser. Do not enter real client PII or credentials. Secure
+          staff authentication and shared persistent storage are required before real client use.
         </div>
       </footer>
     </div>

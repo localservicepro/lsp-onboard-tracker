@@ -46,20 +46,35 @@ function FollowUpPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="font-display text-2xl font-bold tracking-tight text-foreground">Follow-up</h1>
-        <p className="mt-1 text-sm text-muted-foreground">Outstanding actions grouped by owner. "Needs follow-up" means an actual issue was recorded — not just that a call hasn't happened.</p>
+        <h1 className="font-display text-2xl font-bold tracking-tight text-foreground">
+          Follow-up
+        </h1>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Outstanding actions grouped by owner. "Needs follow-up" means an actual issue was recorded
+          — not just that a call hasn't happened.
+        </p>
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-xs text-muted-foreground">Filter by owner:</span>
-        <select value={owner} onChange={(e) => setOwner(e.target.value)} className="rounded-xl border border-border bg-card px-3 py-2 text-sm text-foreground outline-hidden focus:ring-2 focus:ring-accent cursor-pointer min-h-[40px]">
+        <select
+          value={owner}
+          onChange={(e) => setOwner(e.target.value)}
+          className="rounded-xl border border-border bg-card px-3 py-2 text-sm text-foreground outline-hidden focus:ring-2 focus:ring-accent cursor-pointer min-h-[40px]"
+        >
           <option value="all">All owners ({actions.length})</option>
-          {owners.map((o) => <option key={o} value={o}>{o}</option>)}
+          {owners.map((o) => (
+            <option key={o} value={o}>
+              {o}
+            </option>
+          ))}
         </select>
       </div>
 
       {byOwner.length === 0 && (
-        <div className="rounded-2xl border border-border bg-card p-6 text-center text-sm text-muted-foreground">No outstanding actions. 🎉</div>
+        <div className="rounded-2xl border border-border bg-card p-6 text-center text-sm text-muted-foreground">
+          No outstanding actions. 🎉
+        </div>
       )}
 
       <div className="space-y-4">
@@ -74,10 +89,22 @@ function FollowUpPage() {
                 <div key={i} className="rounded-xl border border-border bg-background p-3 text-sm">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div className="font-medium text-foreground">{a.summary}</div>
-                    <Link to="/clients/$clientId" params={{ clientId: a.clientId }} className="text-xs text-primary underline">Open {a.businessName}</Link>
+                    <Link
+                      to="/clients/$clientId"
+                      params={{ clientId: a.clientId }}
+                      className="text-xs text-primary underline"
+                    >
+                      Open {a.businessName}
+                    </Link>
                   </div>
-                  {a.nextAction && <div className="mt-1 text-xs text-muted-foreground">Next action: {a.nextAction}</div>}
-                  {a.detail && <div className="mt-0.5 text-xs text-muted-foreground">{a.detail}</div>}
+                  {a.nextAction && (
+                    <div className="mt-1 text-xs text-muted-foreground">
+                      Next action: {a.nextAction}
+                    </div>
+                  )}
+                  {a.detail && (
+                    <div className="mt-0.5 text-xs text-muted-foreground">{a.detail}</div>
+                  )}
                 </div>
               ))}
             </div>

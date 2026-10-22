@@ -1,11 +1,7 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { useStore, type NewClientInput } from "../lib/store";
-import {
-  deriveClientStatus,
-  nextCallTypeForClient,
-  unfinishedCallOfType,
-} from "../lib/completion";
+import { deriveClientStatus, nextCallTypeForClient, unfinishedCallOfType } from "../lib/completion";
 import type { CallStatus, CallType } from "../lib/types";
 import { CALL_TYPES, CALL_TYPE_LABEL } from "../lib/types";
 import { StatusBadge } from "../components/status-badge";
@@ -14,9 +10,17 @@ export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
       { title: "Dashboard — LSP Onboarding Checklist" },
-      { name: "description", content: "Staff dashboard for client onboarding calls — progress, blockers and next actions." },
+      {
+        name: "description",
+        content:
+          "Staff dashboard for client onboarding calls — progress, blockers and next actions.",
+      },
       { property: "og:title", content: "Dashboard — LSP Onboarding Checklist" },
-      { property: "og:description", content: "Staff dashboard for client onboarding calls — progress, blockers and next actions." },
+      {
+        property: "og:description",
+        content:
+          "Staff dashboard for client onboarding calls — progress, blockers and next actions.",
+      },
     ],
   }),
   component: Dashboard,
@@ -46,14 +50,19 @@ function Dashboard() {
   const rows = useMemo(() => {
     const q = query.trim().toLowerCase();
     return state.clients
-      .map((c) => ({ client: c, derived: deriveClientStatus(c, guides), nextType: nextCallTypeForClient(c) }))
+      .map((c) => ({
+        client: c,
+        derived: deriveClientStatus(c, guides),
+        nextType: nextCallTypeForClient(c),
+      }))
       .filter(({ client, derived, nextType }) => {
         if (!showTest && client.isTestRecord) return false;
         if (staff !== "all" && client.assignedTeamMember !== staff) return false;
         if (status !== "all" && derived !== status) return false;
         if (callTypeFilter !== "all" && nextType !== callTypeFilter) return false;
         if (q) {
-          const hay = `${client.businessName} ${client.clientName} ${client.notes ?? ""}`.toLowerCase();
+          const hay =
+            `${client.businessName} ${client.clientName} ${client.notes ?? ""}`.toLowerCase();
           if (!hay.includes(q)) return false;
         }
         return true;
@@ -73,9 +82,17 @@ function Dashboard() {
     // Reuse an existing unfinished call of this type, else start a new one.
     const existing = unfinishedCallOfType(client, type);
     if (existing) {
-      navigate({ to: "/clients/$clientId/call/$callId", params: { clientId, callId: existing.id } });
+      navigate({
+        to: "/clients/$clientId/call/$callId",
+        params: { clientId, callId: existing.id },
+      });
     } else {
-      const id = startCall(clientId, type, client.assignedTeamMember, new Date().toISOString().slice(0, 10));
+      const id = startCall(
+        clientId,
+        type,
+        client.assignedTeamMember,
+        new Date().toISOString().slice(0, 10),
+      );
       navigate({ to: "/clients/$clientId/call/$callId", params: { clientId, callId: id } });
     }
   };
@@ -84,12 +101,15 @@ function Dashboard() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-3 border-b border-border/80 pb-4">
         <div>
-          <span className="text-xs font-mono font-extrabold uppercase tracking-widest text-accent">Internal Staff Portal</span>
+          <span className="text-xs font-mono font-extrabold uppercase tracking-widest text-accent">
+            Internal Staff Portal
+          </span>
           <h1 className="font-display text-2xl sm:text-3xl font-extrabold tracking-tight text-foreground">
             LSP Onboarding Checklist
           </h1>
           <p className="mt-1 text-xs sm:text-sm text-muted-foreground max-w-2xl">
-            Track integration & connection calls and onboarding & training calls. Start or continue a call from each client row.
+            Track integration & connection calls and onboarding & training calls. Start or continue
+            a call from each client row.
           </p>
         </div>
         <button
@@ -122,7 +142,9 @@ function Dashboard() {
         >
           <option value="all">All Staff</option>
           {team.map((t) => (
-            <option key={t.id} value={t.name}>{t.name}</option>
+            <option key={t.id} value={t.name}>
+              {t.name}
+            </option>
           ))}
         </select>
         <select
@@ -133,7 +155,9 @@ function Dashboard() {
         >
           <option value="all">All Call Types</option>
           {CALL_TYPES.map((t) => (
-            <option key={t.value} value={t.value}>{t.label}</option>
+            <option key={t.value} value={t.value}>
+              {t.label}
+            </option>
           ))}
         </select>
         <select
@@ -143,11 +167,18 @@ function Dashboard() {
           className="rounded-xl border border-border bg-background px-3.5 py-2 text-xs sm:text-sm text-foreground outline-hidden focus:ring-2 focus:ring-accent cursor-pointer min-h-[40px]"
         >
           {STATUS_FILTERS.map((s) => (
-            <option key={s.value} value={s.value}>{s.label}</option>
+            <option key={s.value} value={s.value}>
+              {s.label}
+            </option>
           ))}
         </select>
         <label className="inline-flex items-center gap-1.5 text-xs font-semibold text-muted-foreground cursor-pointer px-1">
-          <input type="checkbox" checked={showTest} onChange={(e) => setShowTest(e.target.checked)} className="h-4 w-4 rounded border-border accent-accent cursor-pointer" />
+          <input
+            type="checkbox"
+            checked={showTest}
+            onChange={(e) => setShowTest(e.target.checked)}
+            className="h-4 w-4 rounded border-border accent-accent cursor-pointer"
+          />
           Test records
         </label>
       </div>
@@ -178,7 +209,11 @@ function Dashboard() {
                 return (
                   <tr key={client.id} className="hover:bg-accent/10 transition-colors">
                     <td className="px-4 py-3.5">
-                      <Link to="/clients/$clientId" params={{ clientId: client.id }} className="block group">
+                      <Link
+                        to="/clients/$clientId"
+                        params={{ clientId: client.id }}
+                        className="block group"
+                      >
                         <div className="flex flex-wrap items-center gap-2">
                           <span className="font-bold text-foreground group-hover:text-accent transition-colors">
                             {client.businessName}
@@ -192,9 +227,13 @@ function Dashboard() {
                         <div className="text-xs text-muted-foreground">{client.clientName}</div>
                       </Link>
                     </td>
-                    <td className="hidden px-3 py-3.5 text-muted-foreground font-medium sm:table-cell">{client.assignedTeamMember}</td>
+                    <td className="hidden px-3 py-3.5 text-muted-foreground font-medium sm:table-cell">
+                      {client.assignedTeamMember}
+                    </td>
                     <td className="hidden px-3 py-3.5 md:table-cell">
-                      <span className="text-xs font-semibold text-foreground">{CALL_TYPE_LABEL[nextType]}</span>
+                      <span className="text-xs font-semibold text-foreground">
+                        {CALL_TYPE_LABEL[nextType]}
+                      </span>
                     </td>
                     <td className="hidden px-3 py-3.5 text-muted-foreground font-mono md:table-cell">
                       {client.nextCallDate ?? "—"}
@@ -227,7 +266,12 @@ function Dashboard() {
             const id = addClient(input);
             setShowNew(false);
             // Start the appropriate call immediately so staff can begin the checklist.
-            const callId = startCall(id, input.callType, input.assignedTeamMember, input.callDate ?? new Date().toISOString().slice(0, 10));
+            const callId = startCall(
+              id,
+              input.callType,
+              input.assignedTeamMember,
+              input.callDate ?? new Date().toISOString().slice(0, 10),
+            );
             navigate({ to: "/clients/$clientId/call/$callId", params: { clientId: id, callId } });
           }}
         />
@@ -237,11 +281,16 @@ function Dashboard() {
 }
 
 function StatCard({ label, value, tone }: { label: string; value: number; tone?: "ok" | "warn" }) {
-  const color = tone === "ok" ? "text-chart-1" : tone === "warn" ? "text-destructive" : "text-foreground";
+  const color =
+    tone === "ok" ? "text-chart-1" : tone === "warn" ? "text-destructive" : "text-foreground";
   return (
     <div className="rounded-2xl border border-border bg-card p-4 shadow-sm">
-      <div className="text-xs font-bold uppercase tracking-wider text-muted-foreground">{label}</div>
-      <div className={`mt-1.5 font-display text-2xl sm:text-3xl font-extrabold ${color}`}>{value}</div>
+      <div className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+        {label}
+      </div>
+      <div className={`mt-1.5 font-display text-2xl sm:text-3xl font-extrabold ${color}`}>
+        {value}
+      </div>
     </div>
   );
 }
@@ -267,51 +316,112 @@ function NewClientDialog({
   const valid = businessName.trim() && clientName.trim() && assignedTeamMember && callType;
 
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-background/80 backdrop-blur-sm p-4" onClick={onClose}>
-      <div className="w-full max-w-lg rounded-2xl border-2 border-accent/40 bg-card p-6 shadow-2xl space-y-4" onClick={(e) => e.stopPropagation()}>
+    <div
+      className="fixed inset-0 z-50 grid place-items-center bg-background/80 backdrop-blur-sm p-4"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-lg rounded-2xl border-2 border-accent/40 bg-card p-6 shadow-2xl space-y-4"
+        onClick={(e) => e.stopPropagation()}
+      >
         <div>
-          <span className="text-xs font-mono font-bold text-accent uppercase tracking-wider">Internal Staff Tool</span>
+          <span className="text-xs font-mono font-bold text-accent uppercase tracking-wider">
+            Internal Staff Tool
+          </span>
           <h2 className="font-display text-xl font-bold text-foreground">Add New Client</h2>
-          <p className="mt-1 text-xs text-muted-foreground">Quick add. The appropriate checklist is created automatically. Do not enter real credentials.</p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Quick add. The appropriate checklist is created automatically. Do not enter real
+            credentials.
+          </p>
         </div>
 
         <div className="grid gap-3 sm:grid-cols-2 text-xs">
           <Field label="Business Name *">
-            <input className={inputCls} placeholder="e.g. Miller Plumbing" value={businessName} onChange={(e) => setBusinessName(e.target.value)} />
+            <input
+              className={inputCls}
+              placeholder="e.g. Miller Plumbing"
+              value={businessName}
+              onChange={(e) => setBusinessName(e.target.value)}
+            />
           </Field>
           <Field label="Client Name *">
-            <input className={inputCls} placeholder="e.g. Jack Miller" value={clientName} onChange={(e) => setClientName(e.target.value)} />
+            <input
+              className={inputCls}
+              placeholder="e.g. Jack Miller"
+              value={clientName}
+              onChange={(e) => setClientName(e.target.value)}
+            />
           </Field>
           <Field label="Assigned Staff *">
-            <select className={inputCls} value={assignedTeamMember} onChange={(e) => setAssignedTeamMember(e.target.value)}>
-              {team.map((t) => <option key={t.id} value={t.name}>{t.name}</option>)}
+            <select
+              className={inputCls}
+              value={assignedTeamMember}
+              onChange={(e) => setAssignedTeamMember(e.target.value)}
+            >
+              {team.map((t) => (
+                <option key={t.id} value={t.name}>
+                  {t.name}
+                </option>
+              ))}
             </select>
           </Field>
           <Field label="Call Type *">
-            <select className={inputCls} value={callType} onChange={(e) => setCallType(e.target.value as CallType)}>
-              {CALL_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+            <select
+              className={inputCls}
+              value={callType}
+              onChange={(e) => setCallType(e.target.value as CallType)}
+            >
+              {CALL_TYPES.map((t) => (
+                <option key={t.value} value={t.value}>
+                  {t.label}
+                </option>
+              ))}
             </select>
           </Field>
           <Field label="Call Date (optional)">
-            <input type="date" className={inputCls} value={callDate} onChange={(e) => setCallDate(e.target.value)} />
+            <input
+              type="date"
+              className={inputCls}
+              value={callDate}
+              onChange={(e) => setCallDate(e.target.value)}
+            />
           </Field>
           <Field label="GHL Subaccount Link (optional)">
-            <input className={inputCls} placeholder="https://..." value={ghlLink} onChange={(e) => setGhlLink(e.target.value)} />
+            <input
+              className={inputCls}
+              placeholder="https://..."
+              value={ghlLink}
+              onChange={(e) => setGhlLink(e.target.value)}
+            />
           </Field>
           <div className="sm:col-span-2">
             <Field label="Contact Details (optional)">
-              <input className={inputCls} placeholder="Phone / email (no passwords)" value={contactDetails} onChange={(e) => setContactDetails(e.target.value)} />
+              <input
+                className={inputCls}
+                placeholder="Phone / email (no passwords)"
+                value={contactDetails}
+                onChange={(e) => setContactDetails(e.target.value)}
+              />
             </Field>
           </div>
           <div className="sm:col-span-2">
             <Field label="Notes (optional)">
-              <textarea className={inputCls} rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Initial notes..." />
+              <textarea
+                className={inputCls}
+                rows={2}
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                placeholder="Initial notes..."
+              />
             </Field>
           </div>
         </div>
 
         <div className="flex justify-end gap-2 pt-2">
-          <button onClick={onClose} className="rounded-xl border border-border px-4 py-2 text-xs font-semibold hover:bg-secondary cursor-pointer min-h-[40px]">
+          <button
+            onClick={onClose}
+            className="rounded-xl border border-border px-4 py-2 text-xs font-semibold hover:bg-secondary cursor-pointer min-h-[40px]"
+          >
             Cancel
           </button>
           <button
@@ -338,7 +448,8 @@ function NewClientDialog({
   );
 }
 
-const inputCls = "w-full rounded-xl border border-border bg-background px-3 py-2 text-xs sm:text-sm text-foreground outline-hidden focus:ring-2 focus:ring-accent min-h-[40px]";
+const inputCls =
+  "w-full rounded-xl border border-border bg-background px-3 py-2 text-xs sm:text-sm text-foreground outline-hidden focus:ring-2 focus:ring-accent min-h-[40px]";
 
 function Field({ label, children }: { label: string; children: import("react").ReactNode }) {
   return (

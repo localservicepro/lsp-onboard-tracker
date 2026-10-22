@@ -13,6 +13,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as FollowUpRouteImport } from './routes/follow-up'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as ClientsClientIdRouteImport } from './routes/clients.$clientId'
+import { Route as ClientsClientIdIndexRouteImport } from './routes/clients.$clientId.index'
 import { Route as ClientsClientIdCallCallIdRouteImport } from './routes/clients.$clientId.call.$callId'
 
 const IndexRoute = IndexRouteImport.update({
@@ -35,6 +36,11 @@ const ClientsClientIdRoute = ClientsClientIdRouteImport.update({
   path: '/clients/$clientId',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ClientsClientIdIndexRoute = ClientsClientIdIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => ClientsClientIdRoute,
+} as any)
 const ClientsClientIdCallCallIdRoute =
   ClientsClientIdCallCallIdRouteImport.update({
     id: '/call/$callId',
@@ -47,13 +53,14 @@ export interface FileRoutesByFullPath {
   '/follow-up': typeof FollowUpRoute
   '/settings': typeof SettingsRoute
   '/clients/$clientId': typeof ClientsClientIdRouteWithChildren
+  '/clients/$clientId/': typeof ClientsClientIdIndexRoute
   '/clients/$clientId/call/$callId': typeof ClientsClientIdCallCallIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/follow-up': typeof FollowUpRoute
   '/settings': typeof SettingsRoute
-  '/clients/$clientId': typeof ClientsClientIdRouteWithChildren
+  '/clients/$clientId': typeof ClientsClientIdIndexRoute
   '/clients/$clientId/call/$callId': typeof ClientsClientIdCallCallIdRoute
 }
 export interface FileRoutesById {
@@ -62,6 +69,7 @@ export interface FileRoutesById {
   '/follow-up': typeof FollowUpRoute
   '/settings': typeof SettingsRoute
   '/clients/$clientId': typeof ClientsClientIdRouteWithChildren
+  '/clients/$clientId/': typeof ClientsClientIdIndexRoute
   '/clients/$clientId/call/$callId': typeof ClientsClientIdCallCallIdRoute
 }
 export interface FileRouteTypes {
@@ -71,6 +79,7 @@ export interface FileRouteTypes {
     | '/follow-up'
     | '/settings'
     | '/clients/$clientId'
+    | '/clients/$clientId/'
     | '/clients/$clientId/call/$callId'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -85,6 +94,7 @@ export interface FileRouteTypes {
     | '/follow-up'
     | '/settings'
     | '/clients/$clientId'
+    | '/clients/$clientId/'
     | '/clients/$clientId/call/$callId'
   fileRoutesById: FileRoutesById
 }
@@ -125,6 +135,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ClientsClientIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/clients/$clientId/': {
+      id: '/clients/$clientId/'
+      path: '/'
+      fullPath: '/clients/$clientId/'
+      preLoaderRoute: typeof ClientsClientIdIndexRouteImport
+      parentRoute: typeof ClientsClientIdRoute
+    }
     '/clients/$clientId/call/$callId': {
       id: '/clients/$clientId/call/$callId'
       path: '/call/$callId'
@@ -136,10 +153,12 @@ declare module '@tanstack/react-router' {
 }
 
 interface ClientsClientIdRouteChildren {
+  ClientsClientIdIndexRoute: typeof ClientsClientIdIndexRoute
   ClientsClientIdCallCallIdRoute: typeof ClientsClientIdCallCallIdRoute
 }
 
 const ClientsClientIdRouteChildren: ClientsClientIdRouteChildren = {
+  ClientsClientIdIndexRoute: ClientsClientIdIndexRoute,
   ClientsClientIdCallCallIdRoute: ClientsClientIdCallCallIdRoute,
 }
 

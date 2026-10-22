@@ -229,7 +229,11 @@ export const DEFAULT_CONNECTION_ITEMS: Omit<TemplateItem, "id">[] = [
   { label: "Google account connected, where required", kind: "staff_check", required: true },
   { label: "Correct Google Business Profile connected", kind: "staff_check", required: true },
   { label: "Google review destination checked", kind: "staff_check", required: true },
-  { label: "Facebook business page connected, where required", kind: "staff_check", required: false },
+  {
+    label: "Facebook business page connected, where required",
+    kind: "staff_check",
+    required: false,
+  },
   { label: "Instagram connected, if included/applicable", kind: "staff_check", required: false },
   { label: "Calendar connected, if included/applicable", kind: "staff_check", required: false },
   { label: "Other agreed integrations checked", kind: "staff_check", required: false },
@@ -237,14 +241,36 @@ export const DEFAULT_CONNECTION_ITEMS: Omit<TemplateItem, "id">[] = [
 
 export const DEFAULT_ONBOARDING_ITEMS: Omit<TemplateItem, "id">[] = [
   { label: "Client personally logs into the phone app", kind: "client_action", required: true },
-  { label: "Client selects the correct business/subaccount", kind: "client_action", required: true },
-  { label: "Client searches existing contacts to avoid duplicates", kind: "client_action", required: true },
+  {
+    label: "Client selects the correct business/subaccount",
+    kind: "client_action",
+    required: true,
+  },
+  {
+    label: "Client searches existing contacts to avoid duplicates",
+    kind: "client_action",
+    required: true,
+  },
   { label: "Client manually adds an agreed contact", kind: "client_action", required: true },
   { label: "Client finds the saved contact", kind: "client_action", required: true },
   { label: "Client opens the review-request feature", kind: "client_action", required: true },
-  { label: "Client selects the agreed recipient and previews the message", kind: "client_action", required: true },
-  { label: "Client personally sends the Google review request", kind: "client_action", required: true, reviewSend: true },
-  { label: "Staff checks the recorded result", kind: "staff_check", required: true, reviewSend: true },
+  {
+    label: "Client selects the agreed recipient and previews the message",
+    kind: "client_action",
+    required: true,
+  },
+  {
+    label: "Client personally sends the Google review request",
+    kind: "client_action",
+    required: true,
+    reviewSend: true,
+  },
+  {
+    label: "Staff checks the recorded result",
+    kind: "staff_check",
+    required: true,
+    reviewSend: true,
+  },
   { label: "Required how-to guides supplied", kind: "staff_check", required: true },
   { label: "Client questions answered and next steps agreed", kind: "staff_check", required: true },
 ];

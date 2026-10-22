@@ -53,39 +53,39 @@
   --radius: 0.75rem;
 
   /* LSP Dark Navy & Electric Blue Palette */
-  --background: oklch(0.13 0.03 250);          /* Deep dark navy background */
-  --foreground: oklch(0.98 0.005 250);         /* Bright crisp white text */
+  --background: oklch(0.13 0.03 250); /* Deep dark navy background */
+  --foreground: oklch(0.98 0.005 250); /* Bright crisp white text */
 
-  --card: oklch(0.18 0.035 250);               /* Navy card background */
-  --card-foreground: oklch(0.98 0.005 250);    /* White text on cards */
+  --card: oklch(0.18 0.035 250); /* Navy card background */
+  --card-foreground: oklch(0.98 0.005 250); /* White text on cards */
 
   --popover: oklch(0.18 0.035 250);
   --popover-foreground: oklch(0.98 0.005 250);
 
-  --primary: oklch(0.58 0.22 250);             /* Electric blue primary button */
+  --primary: oklch(0.58 0.22 250); /* Electric blue primary button */
   --primary-foreground: oklch(0.99 0 0);
 
-  --secondary: oklch(0.22 0.04 250);           /* Slate navy secondary bg */
-  --secondary-foreground: oklch(0.90 0.01 250);
+  --secondary: oklch(0.22 0.04 250); /* Slate navy secondary bg */
+  --secondary-foreground: oklch(0.9 0.01 250);
 
   --muted: oklch(0.22 0.03 250);
-  --muted-foreground: oklch(0.68 0.03 250);    /* Muted blue-grey supporting text */
+  --muted-foreground: oklch(0.68 0.03 250); /* Muted blue-grey supporting text */
 
-  --accent: oklch(0.72 0.18 210);              /* Vibrant Cyan highlight / links */
+  --accent: oklch(0.72 0.18 210); /* Vibrant Cyan highlight / links */
   --accent-foreground: oklch(0.12 0.04 250);
 
-  --destructive: oklch(0.62 0.22 25);          /* Blocked red */
+  --destructive: oklch(0.62 0.22 25); /* Blocked red */
   --destructive-foreground: oklch(0.99 0 0);
 
-  --border: oklch(0.28 0.04 250);               /* Subtle glowing blue-navy border */
+  --border: oklch(0.28 0.04 250); /* Subtle glowing blue-navy border */
   --input: oklch(0.26 0.04 250);
   --ring: oklch(0.72 0.18 210);
 
-  --chart-1: oklch(0.68 0.18 150);             /* Accessible Green for Completed */
-  --chart-2: oklch(0.58 0.22 250);             /* Electric blue for In Progress */
-  --chart-3: oklch(0.72 0.18 210);             /* Cyan for highlight */
-  --chart-4: oklch(0.78 0.16 75);              /* Amber for pending */
-  --chart-5: oklch(0.62 0.22 25);              /* Red for blocked */
+  --chart-1: oklch(0.68 0.18 150); /* Accessible Green for Completed */
+  --chart-2: oklch(0.58 0.22 250); /* Electric blue for In Progress */
+  --chart-3: oklch(0.72 0.18 210); /* Cyan for highlight */
+  --chart-4: oklch(0.78 0.16 75); /* Amber for pending */
+  --chart-5: oklch(0.62 0.22 25); /* Red for blocked */
 }
 
 @layer base {
@@ -100,7 +100,10 @@
     min-height: 100vh;
   }
 
-  h1, h2, h3, h4 {
+  h1,
+  h2,
+  h3,
+  h4 {
     font-family: var(--font-display);
   }
 }

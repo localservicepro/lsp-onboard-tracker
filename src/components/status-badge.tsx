@@ -14,7 +14,13 @@ const LABELS: Record<CallStatus, string> = {
   completed: "Completed",
 };
 
-export function StatusBadge({ status, className = "" }: { status: CallStatus; className?: string }) {
+export function StatusBadge({
+  status,
+  className = "",
+}: {
+  status: CallStatus;
+  className?: string;
+}) {
   return (
     <span
       className={
