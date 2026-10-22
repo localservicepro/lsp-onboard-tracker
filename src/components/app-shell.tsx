@@ -18,13 +18,41 @@ const NAV: NavItem[] = [
 ];
 
 export function AppShell({ children }: { children: ReactNode }) {
-  const { staff, ready, loading, error, signIn, signOut } = useAuth();
+  const { staff, ready, loading, error, signIn, signOut, refresh } = useAuth();
 
   // Auth gate: show sign-in before any client records.
   if (!ready) {
     return (
       <div className="grid min-h-screen place-items-center bg-background px-4">
         <p className="text-sm text-muted-foreground">Loading…</p>
+      </div>
+    );
+  }
+
+  // A genuine lookup/network error is distinct from "not signed in" or
+  // "not approved". Surface it with a Retry so we never show "Account not
+  // approved" for a failed request.
+  if (error && !staff) {
+    return (
+      <div className="grid min-h-screen place-items-center bg-background px-4">
+        <div className="max-w-md text-center">
+          <h1 className="font-display text-xl font-bold text-foreground">Couldn't verify access</h1>
+          <p className="mt-2 text-sm text-muted-foreground">{error}</p>
+          <div className="mt-6 flex flex-wrap justify-center gap-2">
+            <button
+              onClick={() => void refresh()}
+              className="rounded-xl bg-primary px-4 py-2 text-sm font-bold text-primary-foreground hover:bg-primary/90 cursor-pointer min-h-[40px]"
+            >
+              Retry
+            </button>
+            <button
+              onClick={() => void signOut()}
+              className="rounded-xl border border-border bg-card px-4 py-2 text-sm font-bold text-foreground hover:bg-secondary cursor-pointer min-h-[40px]"
+            >
+              Sign out
+            </button>
+          </div>
+        </div>
       </div>
     );
   }

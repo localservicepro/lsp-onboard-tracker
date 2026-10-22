@@ -51,12 +51,16 @@ export const getStaffIdentity = createServerFn({ method: "GET" })
   .handler(async ({ context }) => {
     const userId = context.userId;
     const email = context.claims.email ?? null;
-    // Check if this user is an approved staff member.
-    const { data: staffRow } = await context.supabase
+    // Look up the caller's own staff approval row. RLS restricts this to the
+    // caller's own row, so an unapproved user gets null (a genuine "not
+    // approved" result). A query error is distinct: throw so the client sees
+    // a failure rather than a false "not approved".
+    const { data: staffRow, error: staffErr } = await context.supabase
       .from("staff")
       .select("id, display_name")
       .eq("user_id", userId)
       .maybeSingle();
+    if (staffErr) throw new Error(staffErr.message || "Could not verify staff approval.");
     return {
       userId,
       email,

@@ -43,11 +43,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       const userId = session.user.id;
       const email = session.user.email ?? null;
-      const { data: staffRow } = await supabase
+      // Look up the signed-in user's own staff approval row. RLS restricts
+      // this to the caller's own row (auth.uid() = user_id), so an unapproved
+      // user simply gets null — that is a genuine "not approved" result, not
+      // an error. A query/network failure is a distinct case: surface it as an
+      // error so we never show "Account not approved" for a failed request.
+      const { data: staffRow, error: staffErr } = await supabase
         .from("staff")
         .select("id, display_name")
         .eq("user_id", userId)
         .maybeSingle();
+      if (staffErr) {
+        setStaff(null);
+        setError(staffErr.message || "Could not verify staff approval.");
+        return;
+      }
       setStaff({
         userId,
         email,
