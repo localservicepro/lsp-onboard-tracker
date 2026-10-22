@@ -32,6 +32,12 @@ import {
   type CallGuideUpdate,
 } from "./mutations.server";
 import { sendProgressEmail, buildEmailSubject, buildEmailBody } from "./email.server";
+import {
+  deriveCallStatus,
+  effectiveItem,
+  isItemDone,
+  itemNeedsFollowUp,
+} from "./completion";
 import type { CallType, ItemStatus, ReviewOutcome, GuideChannel } from "./types";
 
 // ---- Load full app state ----
@@ -41,13 +47,26 @@ export const getState = createServerFn({ method: "GET" })
     return loadState(context.supabase);
   });
 
-// ---- Get current staff identity ----
+// ---- Get current staff identity + approval ----
+// Returns the authenticated user's identity and whether they are an
+// approved staff member (present in public.staff). Unapproved signed-in
+// users get { approved: false } and the UI blocks access to records.
 export const getStaffIdentity = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
+    const userId = context.userId;
+    const email = context.claims.email ?? null;
+    // Check if this user is an approved staff member.
+    const { data: staffRow } = await context.supabase
+      .from("staff")
+      .select("id, display_name")
+      .eq("user_id", userId)
+      .maybeSingle();
     return {
-      userId: context.userId,
-      email: context.claims.email ?? null,
+      userId,
+      email,
+      approved: !!staffRow,
+      displayName: staffRow?.display_name ?? email ?? "Staff",
     };
   });
 
@@ -337,22 +356,14 @@ export const addTemplateItem = createServerFn({ method: "POST" })
   });
 
 // ---- Finish call (save + queue email) ----
+// Computes the summary payload server-side from the actual call records,
+// so the client never has to assemble it. Save first, then queue one email.
 const finishCallSchema = z.object({
   callId: z.string().uuid(),
-  clientId: z.string().uuid(),
-  staffMember: z.string().min(1),
   notes: z.string().optional(),
   followUpAction: z.string().optional(),
   followUpOwner: z.string().optional(),
   followUpDate: z.string().optional(),
-  businessName: z.string().min(1),
-  clientName: z.string().min(1),
-  callType: z.enum(["connection", "onboarding"]),
-  callDate: z.string().min(1),
-  callStatus: z.string().min(1),
-  completedTasks: z.array(z.string()),
-  outstandingWork: z.array(z.string()),
-  clientLink: z.string().min(1),
 });
 
 export const finishCall = createServerFn({ method: "POST" })
@@ -368,23 +379,47 @@ export const finishCall = createServerFn({ method: "POST" })
       finishedAt: new Date().toISOString(),
     });
 
-    // 2. Queue one progress-summary email (deduped by event_key).
+    // 2. Load the call + client to build the email payload server-side.
+    const loaded = await loadState(context.supabase);
+    let client = loaded.clients.find((c) => c.calls.some((cl) => cl.id === data.callId));
+    if (!client) {
+      // Fallback: load just this call's client.
+      const { data: callRow } = await context.supabase
+        .from("calls")
+        .select("client_id")
+        .eq("id", data.callId)
+        .maybeSingle();
+      client = loaded.clients.find((c) => c.id === (callRow as { client_id?: string })?.client_id);
+    }
+    const call = client?.calls.find((c) => c.id === data.callId);
+    if (!client || !call) return { ok: true, email: { status: "failed", error: "Call not found" } };
+
+    const guides = loaded.guides;
+    const cs = deriveCallStatus(call, guides);
+    const completed: string[] = [];
+    const outstanding: string[] = [];
+    for (const it of call.items) {
+      const eff = effectiveItem(call, it, guides);
+      if (eff.status === "done" && isItemDone(eff)) completed.push(it.label);
+      else if (itemNeedsFollowUp(eff)) outstanding.push(`${it.label} — needs help`);
+      else if (eff.status !== "not_applicable") outstanding.push(it.label);
+    }
+
     const eventKey = `finish-call-${data.callId}`;
-    const subject = buildEmailSubject(data.businessName, data.callDate);
+    const subject = buildEmailSubject(client.businessName, call.date);
     const body = buildEmailBody({
-      businessName: data.businessName,
-      clientName: data.clientName,
-      callType:
-        data.callType === "connection" ? "Integration & Connection" : "Onboarding & Training",
-      callDate: data.callDate,
-      staffMember: data.staffMember,
-      completedTasks: data.completedTasks,
-      outstandingWork: data.outstandingWork,
-      followUpOwner: data.followUpOwner || "—",
-      followUpAction: data.followUpAction || "—",
-      followUpDate: data.followUpDate || "—",
-      callStatus: data.callStatus,
-      clientLink: data.clientLink,
+      businessName: client.businessName,
+      clientName: client.clientName,
+      callType: call.type === "connection" ? "Integration & Connection" : "Onboarding & Training",
+      callDate: call.date,
+      staffMember: call.staffMember,
+      completedTasks: completed,
+      outstandingWork: outstanding,
+      followUpOwner: call.followUpOwner || "—",
+      followUpAction: call.followUpAction || "—",
+      followUpDate: call.followUpDate || "—",
+      callStatus: cs.replace(/_/g, " "),
+      clientLink: "",
     });
 
     const emailResult = await sendProgressEmail(context.supabase, {
@@ -394,51 +429,60 @@ export const finishCall = createServerFn({ method: "POST" })
       body,
     });
 
-    return {
-      ok: true,
-      email: emailResult,
-    };
+    return { ok: true, email: emailResult };
   });
 
 // ---- Send progress update (interim, optional) ----
 const sendUpdateSchema = z.object({
   callId: z.string().uuid(),
-  staffMember: z.string().min(1),
-  businessName: z.string().min(1),
-  clientName: z.string().min(1),
-  callType: z.enum(["connection", "onboarding"]),
-  callDate: z.string().min(1),
-  callStatus: z.string().min(1),
-  completedTasks: z.array(z.string()),
-  outstandingWork: z.array(z.string()),
-  followUpOwner: z.string().optional(),
-  followUpAction: z.string().optional(),
-  followUpDate: z.string().optional(),
-  clientLink: z.string().min(1),
 });
 
 export const sendProgressUpdate = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .validator((data) => sendUpdateSchema.parse(data))
   .handler(async ({ data, context }) => {
-    // Use a timestamped event key so interim updates are not deduped away,
-    // but still prevent duplicates within the same second.
-    const eventKey = `progress-update-${data.callId}-${data.callDate}-${data.callStatus}`;
-    const subject = `[Onboarding — Progress update] ${data.businessName} — ${data.callDate}`;
+    const loaded = await loadState(context.supabase);
+    let client = loaded.clients.find((c) => c.calls.some((cl) => cl.id === data.callId));
+    if (!client) {
+      const { data: callRow } = await context.supabase
+        .from("calls")
+        .select("client_id")
+        .eq("id", data.callId)
+        .maybeSingle();
+      client = loaded.clients.find((c) => c.id === (callRow as { client_id?: string })?.client_id);
+    }
+    const call = client?.calls.find((c) => c.id === data.callId);
+    if (!client || !call)
+      return { ok: false, email: { status: "failed", error: "Call not found" } };
+
+    const guides = loaded.guides;
+    const cs = deriveCallStatus(call, guides);
+    const completed: string[] = [];
+    const outstanding: string[] = [];
+    for (const it of call.items) {
+      const eff = effectiveItem(call, it, guides);
+      if (eff.status === "done" && isItemDone(eff)) completed.push(it.label);
+      else if (itemNeedsFollowUp(eff)) outstanding.push(`${it.label} — needs help`);
+      else if (eff.status !== "not_applicable") outstanding.push(it.label);
+    }
+
+    // Timestamped event key so interim updates are not deduped away, but
+    // still prevent duplicates within the same second.
+    const eventKey = `progress-update-${data.callId}-${cs}-${Math.floor(Date.now() / 1000)}`;
+    const subject = `[Onboarding — Progress update] ${client.businessName} — ${call.date}`;
     const body = buildEmailBody({
-      businessName: data.businessName,
-      clientName: data.clientName,
-      callType:
-        data.callType === "connection" ? "Integration & Connection" : "Onboarding & Training",
-      callDate: data.callDate,
-      staffMember: data.staffMember,
-      completedTasks: data.completedTasks,
-      outstandingWork: data.outstandingWork,
-      followUpOwner: data.followUpOwner || "—",
-      followUpAction: data.followUpAction || "—",
-      followUpDate: data.followUpDate || "—",
-      callStatus: data.callStatus,
-      clientLink: data.clientLink,
+      businessName: client.businessName,
+      clientName: client.clientName,
+      callType: call.type === "connection" ? "Integration & Connection" : "Onboarding & Training",
+      callDate: call.date,
+      staffMember: call.staffMember,
+      completedTasks: completed,
+      outstandingWork: outstanding,
+      followUpOwner: call.followUpOwner || "—",
+      followUpAction: call.followUpAction || "—",
+      followUpDate: call.followUpDate || "—",
+      callStatus: cs.replace(/_/g, " "),
+      clientLink: "",
     });
 
     const emailResult = await sendProgressEmail(context.supabase, {
