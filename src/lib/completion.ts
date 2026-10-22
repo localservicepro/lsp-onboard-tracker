@@ -11,6 +11,8 @@
 //    staff verifier, timestamp and result note.
 //  - No unresolved blockers.
 //  - "Sent" and "Receipt confirmed" remain distinct.
+//  - A missing guide (no URL) cannot count as Sent. A verbal walkthrough is a
+//    separate activity and never counts as a guide being sent.
 //  - Progress denominators exclude approved N/A items.
 
 import type {
@@ -20,6 +22,8 @@ import type {
   TaskItem,
   StaffVerificationItem,
   Blocker,
+  GuideSentRecord,
+  GuideLink,
   OverallStatus,
 } from "./types";
 
@@ -125,21 +129,73 @@ export function staffVerificationProgress(client: Client): Progress {
   };
 }
 
+// ---- Guide-sent validation ----
+//
+// "Guide sent" requires a valid supplied guide URL or identifiable document
+// version, a date/time, a delivery channel and a staff member. A verbal
+// walkthrough is a SEPARATE activity and never counts as a guide being sent.
+// A guide with no configured URL cannot be marked Sent (it shows "Guide link
+// not added"). It may be exempted only with a reason + reviewer acknowledgement.
+
+export function guideLabel(g: GuideSentRecord, guides: GuideLink[]): string {
+  return guides.find((d) => d.id === g.guideId)?.label ?? g.guideId;
+}
+
+export function guideHasUrl(g: GuideSentRecord, guides: GuideLink[]): boolean {
+  return !!guides.find((d) => d.id === g.guideId)?.url?.trim();
+}
+
+export function isGuideSentValid(g: GuideSentRecord, guides: GuideLink[]): boolean {
+  if (!g.sent) return false;
+  if (!g.sentAt) return false;
+  if (!g.channel) return false;
+  if (!g.sentBy?.trim()) return false;
+  // A valid supplied URL/version is mandatory — never "Guide link not added".
+  const supplied = g.suppliedUrlOrVersion?.trim();
+  if (!supplied) return false;
+  if (/guide link not added/i.test(supplied)) return false;
+  // If the guide has no configured URL, it cannot be sent at all.
+  if (!guideHasUrl(g, guides)) return false;
+  return true;
+}
+
+export function isGuideExempt(g: GuideSentRecord): boolean {
+  return (
+    !g.sent &&
+    !!g.notApplicableReason?.trim() &&
+    !!g.acknowledgedByReviewer
+  );
+}
+
+export function isGuideOutstanding(g: GuideSentRecord, guides: GuideLink[]): boolean {
+  // Outstanding = not sent and not exempted. Missing-URL guides stay outstanding.
+  if (g.sent) return false;
+  if (isGuideExempt(g)) return false;
+  void guides;
+  return true;
+}
+
 export function unresolvedBlockers(client: Client): Blocker[] {
   return client.blockers.filter((b) => !b.resolved);
 }
 
-export function followupProgress(client: Client): Progress {
+export function followupProgress(client: Client, guides: GuideLink[]): Progress {
   const blockers = client.blockers;
-  const guides = client.guides;
+  const guideDone = client.guides.filter((g) => isGuideSentValid(g, guides)).length;
+  const guideExempt = client.guides.filter((g) => isGuideExempt(g)).length;
+  const guideApplicable = client.guides.filter((g) => !isGuideExempt(g)).length;
   const blockerDone = blockers.filter((b) => b.resolved).length;
-  const guideDone = guides.filter((g) => g.sent && !!g.sentAt && !!g.channel && !!g.sentBy).length;
-  const total = blockers.length + guides.length;
+  const total = blockers.length + guideApplicable;
   const done = blockerDone + guideDone;
-  return { done, total, pct: total === 0 ? 0 : Math.round((done / total) * 100) };
+  return {
+    done,
+    total,
+    pct: total === 0 ? (guideExempt > 0 ? 100 : 0) : Math.round((done / total) * 100),
+    exemptCount: guideExempt,
+  };
 }
 
-export function completionBlock(client: Client): CompletionBlock {
+export function completionBlock(client: Client, guides: GuideLink[] = []): CompletionBlock {
   const reasons: string[] = [];
 
   // 1. Access checks
@@ -154,10 +210,10 @@ export function completionBlock(client: Client): CompletionBlock {
       return !isConnectionSatisfied(c);
     }
     // Optional connections: if left as not_checked or blocked
-    return c.status === "blocked" || (c.status === "not_checked");
+    return c.status === "blocked" || c.status === "not_checked";
   });
   if (unverifiedConnections.length > 0) {
-    reasons.push(`${unverifiedConnections.length} connection(s) unverified or blocked (e.g. ${unverifiedConnections.map(c => c.label).slice(0, 2).join(", ")})`);
+    reasons.push(`${unverifiedConnections.length} connection(s) unverified or blocked (e.g. ${unverifiedConnections.map((c) => c.label).slice(0, 2).join(", ")})`);
   }
 
   // Check N/A connections without reason or acknowledgement
@@ -189,14 +245,25 @@ export function completionBlock(client: Client): CompletionBlock {
     reasons.push(`${blockers.length} unresolved blocker(s)`);
   }
 
+  // 6. Outstanding required documentation (guides) without an approved exemption
+  const outstandingGuides = client.guides.filter((g) => isGuideOutstanding(g, guides));
+  if (outstandingGuides.length > 0) {
+    reasons.push(`${outstandingGuides.length} required guide(s) not sent or exempted (e.g. ${outstandingGuides.map((g) => guideLabel(g, guides)).slice(0, 2).join(", ")})`);
+  }
+  // Guides marked sent but invalid (e.g. no URL / "Guide link not added")
+  const invalidSentGuides = client.guides.filter((g) => g.sent && !isGuideSentValid(g, guides));
+  if (invalidSentGuides.length > 0) {
+    reasons.push(`${invalidSentGuides.length} guide(s) marked Sent without a valid supplied URL/version (verbal walkthrough is not a sent guide)`);
+  }
+
   return { ok: reasons.length === 0, reasons };
 }
 
-export function derivedOverallStatus(client: Client): OverallStatus {
+export function derivedOverallStatus(client: Client, guides: GuideLink[] = []): OverallStatus {
   // If there are unresolved blockers, status is blocked
   if (unresolvedBlockers(client).length > 0) return "blocked";
 
-  const block = completionBlock(client);
+  const block = completionBlock(client, guides);
   if (block.ok) {
     return "completed";
   }

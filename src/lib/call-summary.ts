@@ -1,4 +1,4 @@
-import type { Client } from "./types";
+import type { Client, GuideLink } from "./types";
 import {
   isAccessDone,
   isConnectionSatisfied,
@@ -8,11 +8,16 @@ import {
   isStaffVerificationDone,
   unresolvedBlockers,
   derivedOverallStatus,
+  isGuideSentValid,
+  isGuideExempt,
+  isGuideOutstanding,
+  guideLabel,
+  guideHasUrl,
 } from "./completion";
 
 // Build a copyable call-summary draft.
 // This is a RECORD only — it is never sent automatically. The caller copies it manually.
-export function buildCallSummary(client: Client): string {
+export function buildCallSummary(client: Client, guides: GuideLink[] = []): string {
   const completedByClient = client.tasks.filter((t) => taskCompletionProofValid(t));
   const demonstratedOnly = client.tasks.filter((t) => t.status === "demonstrated_by_staff");
   const exemptedTasks = client.tasks.filter((t) => t.status === "not_applicable" && t.acknowledgedByReviewer);
@@ -24,9 +29,14 @@ export function buildCallSummary(client: Client): string {
 
   const accessCompleted = client.accessChecks.filter(isAccessDone);
   const blockers = unresolvedBlockers(client);
-  const guidesSent = client.guides.filter((g) => g.sent && g.sentAt);
 
-  const overall = derivedOverallStatus(client);
+  // Guides: sent (valid), verbal walkthroughs (separate), outstanding, exempted
+  const guidesSent = client.guides.filter((g) => isGuideSentValid(g, guides));
+  const walkthroughs = client.guides.filter((g) => g.walkthroughProvided);
+  const outstandingGuides = client.guides.filter((g) => isGuideOutstanding(g, guides));
+  const exemptedGuides = client.guides.filter((g) => isGuideExempt(g));
+
+  const overall = derivedOverallStatus(client, guides);
 
   const lines: string[] = [];
   lines.push("==================================================");
@@ -36,9 +46,11 @@ export function buildCallSummary(client: Client): string {
   lines.push(`Client: ${client.clientName}`);
   lines.push(`Assigned Staff: ${client.assignedTeamMember}`);
   lines.push(`Call Date: ${client.callDate}`);
-  lines.push(`Plan/Inclusions: ${client.plan}`);
+  lines.push(`Plan/Inclusions: ${client.plan || "(not entered)"}`);
+  if (client.accountContext) lines.push(`Account Context: ${client.accountContext}`);
   if (client.nextCallDate) lines.push(`Next Call / Follow-up Date: ${client.nextCallDate}`);
   lines.push(`Overall Status: ${overall.toUpperCase()}`);
+  if (client.isTestRecord) lines.push(`NOTE: Internal test record — not a completed onboarding example.`);
   lines.push("");
 
   // 1. ACCESS CHECKS
@@ -128,17 +140,57 @@ export function buildCallSummary(client: Client): string {
   }
   lines.push("");
 
-  // 6. GUIDES SENT
+  // 6. GUIDES SENT (valid)
   lines.push(`6. HOW-TO GUIDES RECORDED AS SENT (${guidesSent.length}):`);
   if (guidesSent.length === 0) {
-    lines.push("   - None sent yet");
+    lines.push("   - None sent (with valid supplied URL/version)");
   } else {
     guidesSent.forEach((g) => {
+      const name = guideLabel(g, guides);
       const channel = g.channel ? ` via ${g.channel}` : "";
       const by = g.sentBy ? ` by ${g.sentBy}` : "";
       const date = g.sentAt ? ` on ${g.sentAt.slice(0, 10)}` : "";
       const urlInfo = g.suppliedUrlOrVersion ? ` [Link: ${g.suppliedUrlOrVersion}]` : "";
-      lines.push(`   - ${g.guideId}${channel}${by}${date}${urlInfo}`);
+      lines.push(`   - ${name}${channel}${by}${date}${urlInfo}`);
+    });
+  }
+  lines.push("");
+
+  // 7. VERBAL WALKTHROUGHS (separate — never counts as a guide sent)
+  lines.push(`7. VERBAL WALKTHROUGHS PROVIDED (${walkthroughs.length}):`);
+  if (walkthroughs.length === 0) {
+    lines.push("   - None recorded");
+  } else {
+    walkthroughs.forEach((g) => {
+      const name = guideLabel(g, guides);
+      const by = g.walkthroughBy ? ` by ${g.walkthroughBy}` : "";
+      const date = g.walkthroughAt ? ` on ${g.walkthroughAt.slice(0, 10)}` : "";
+      const note = g.walkthroughNotes ? ` — ${g.walkthroughNotes}` : "";
+      lines.push(`   - ${name}${by}${date}${note} (verbal walkthrough — NOT a sent guide)`);
+    });
+  }
+  lines.push("");
+
+  // 8. REQUIRED GUIDES STILL OUTSTANDING
+  lines.push(`8. REQUIRED GUIDES STILL OUTSTANDING (${outstandingGuides.length}):`);
+  if (outstandingGuides.length === 0) {
+    lines.push("   - None outstanding");
+  } else {
+    outstandingGuides.forEach((g) => {
+      const name = guideLabel(g, guides);
+      const missing = guideHasUrl(g, guides) ? "" : " [Guide link not added]";
+      lines.push(`   - ${name}${missing}`);
+    });
+  }
+  lines.push("");
+
+  // 9. APPROVED EXEMPTIONS (guides)
+  lines.push(`9. APPROVED GUIDE EXEMPTIONS (${exemptedGuides.length}):`);
+  if (exemptedGuides.length === 0) {
+    lines.push("   - None");
+  } else {
+    exemptedGuides.forEach((g) => {
+      lines.push(`   - [N/A EXEMPT] ${guideLabel(g, guides)} (Reason: ${g.notApplicableReason})`);
     });
   }
   lines.push("==================================================");

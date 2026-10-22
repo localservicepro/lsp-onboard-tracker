@@ -102,12 +102,22 @@ export interface Blocker {
 
 export interface GuideSentRecord {
   guideId: string;
+  // "Guide sent" requires a valid supplied URL/version + date + channel + staff.
+  // A verbal walkthrough is a SEPARATE activity and never counts as a guide sent.
   sent: boolean;
   sentAt?: string | undefined;
   channel?: GuideChannel | undefined;
   sentBy?: string | undefined;
   suppliedUrlOrVersion?: string | undefined;
   notes?: string | undefined;
+  // Verbal walkthrough (separate from guide delivery)
+  walkthroughProvided?: boolean | undefined;
+  walkthroughAt?: string | undefined;
+  walkthroughBy?: string | undefined;
+  walkthroughNotes?: string | undefined;
+  // Documented exemption (only with reason + reviewer acknowledgement)
+  notApplicableReason?: string | undefined;
+  acknowledgedByReviewer?: boolean | undefined;
   audit: AuditEntry[];
 }
 
@@ -141,6 +151,10 @@ export interface Client {
   guides: GuideSentRecord[];
   callSessions: CallSession[];
   audit: AuditEntry[];
+  // Internal test records are clearly labelled and never pre-completed.
+  isTestRecord?: boolean | undefined;
+  testPurpose?: string | undefined;
+  accountContext?: string | undefined;
   createdAt: string;
   updatedAt: string;
 }

@@ -1,7 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { useStore } from "../lib/store";
-import { unresolvedBlockers } from "../lib/completion";
+import { unresolvedBlockers, isGuideOutstanding, guideLabel } from "../lib/completion";
 
 export const Route = createFileRoute("/follow-up")({
   head: () => ({
@@ -28,6 +28,7 @@ interface Action {
 function FollowUpPage() {
   const { state } = useStore();
   const [owner, setOwner] = useState("all");
+  const guides = state.settings.guides;
 
   const actions = useMemo<Action[]>(() => {
     const out: Action[] = [];
@@ -36,14 +37,13 @@ function FollowUpPage() {
         out.push({ clientId: c.id, businessName: c.businessName, owner: b.owner, kind: "blocker", summary: b.summary, nextAction: b.nextAction });
       }
       for (const g of c.guides) {
-        if (!g.sent) {
-          const def = state.settings.guides.find((d) => d.id === g.guideId);
-          out.push({ clientId: c.id, businessName: c.businessName, owner: c.assignedTeamMember, kind: "guide", summary: `Guide not sent: ${def?.label ?? g.guideId}`, detail: def?.url ? undefined : "Guide link not added" });
+        if (isGuideOutstanding(g, guides)) {
+          out.push({ clientId: c.id, businessName: c.businessName, owner: c.assignedTeamMember, kind: "guide", summary: `Guide not sent: ${guideLabel(g, guides)}`, detail: "Guide link not added or not yet sent" });
         }
       }
     }
     return out;
-  }, [state]);
+  }, [state, guides]);
 
   const owners = useMemo(() => {
     const set = new Set<string>();

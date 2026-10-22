@@ -7,6 +7,7 @@ import type {
   StaffVerificationItem,
   Blocker,
   GuideSentRecord,
+  GuideLink,
   ConnectionStatus,
   TaskStatus,
   StaffVerificationStatus,
@@ -19,6 +20,11 @@ import {
   isTaskSatisfied,
   taskCompletionProofValid,
   isStaffVerificationDone,
+  isGuideSentValid,
+  isGuideExempt,
+  isGuideOutstanding,
+  guideLabel,
+  guideHasUrl,
 } from "../lib/completion";
 import {
   CONNECTION_STATUSES,

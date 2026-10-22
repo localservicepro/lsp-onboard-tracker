@@ -53,7 +53,7 @@ function CallSessionPage() {
   }
 
   const onCopy = async () => {
-    await copyToClipboard(buildCallSummary(client));
+    await copyToClipboard(buildCallSummary(client, state.settings.guides));
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };

@@ -19,7 +19,8 @@ const NAV: NavItem[] = [
 export function AppShell({ children }: { children: ReactNode }) {
   const { state } = useStore();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
-  const blockedCount = state.clients.filter((c) => derivedOverallStatus(c) === "blocked").length;
+  const guides = state.settings.guides;
+  const blockedCount = state.clients.filter((c) => derivedOverallStatus(c, guides) === "blocked").length;
 
   return (
     <div className="min-h-screen bg-background text-foreground">

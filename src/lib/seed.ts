@@ -113,6 +113,8 @@ export function defaultSettings(): Settings {
     { id: "tm-2", name: "Jordan Patel" },
     { id: "tm-3", name: "Sam Rivera" },
     { id: "tm-4", name: "Ryan (Lead)" },
+    { id: "tm-5", name: "Nathaniel" },
+    { id: "tm-6", name: "Jay" },
   ];
   const templates: ChecklistTemplate[] = [
     {
@@ -131,14 +133,14 @@ function makeClient(
   data: {
     businessName: string;
     clientName: string;
-    ghlLocationId?: string;
-    ghlLink?: string;
+    ghlLocationId?: string | undefined;
+    ghlLink?: string | undefined;
     assignedTeamMember: string;
     callDate: string;
     plan: string;
     overallStatus: Client["overallStatus"];
-    notes?: string;
-    nextCallDate?: string;
+    notes?: string | undefined;
+    nextCallDate?: string | undefined;
     accessChecks: AccessCheckItem[];
     connections: ConnectionItem[];
     tasks: TaskItem[];
@@ -147,6 +149,9 @@ function makeClient(
     guides: GuideSentRecord[];
     callSessions: CallSession[];
     audit: AuditEntry[];
+    isTestRecord?: boolean | undefined;
+    testPurpose?: string | undefined;
+    accountContext?: string | undefined;
     createdAt: string;
   },
 ): Client {
@@ -338,8 +343,35 @@ export function seedState(): AppState {
     blockers: [],
     guides: [
       { guideId: DEFAULT_GUIDE_IDS.onboardingHub, sent: true, sentAt: nowISO(10), channel: "email", sentBy: "Sam Rivera", suppliedUrlOrVersion: "https://scribehow.com/page/LSP__Client_Onboarding_Guide__ylTW0OJQSX6yRSyM42hHEQ", notes: "Sent guide pack.", audit: [] },
-      { guideId: DEFAULT_GUIDE_IDS.addLead, sent: true, sentAt: nowISO(10), channel: "in_app", sentBy: "Sam Rivera", suppliedUrlOrVersion: "Guide link not added (verbal walkthrough)", notes: "Walked through in session.", audit: [] },
-      { guideId: DEFAULT_GUIDE_IDS.sendReview, sent: true, sentAt: nowISO(10), channel: "sms", sentBy: "Sam Rivera", suppliedUrlOrVersion: "Guide link not added (verbal walkthrough)", notes: "Provided on SMS.", audit: [] },
+      // CORRECTION: the add-lead and send-review guides previously had no URL
+      // but were marked "Sent" with "Guide link not added (verbal walkthrough)".
+      // That was incorrect — a verbal walkthrough is NOT a sent guide. They are
+      // now recorded as verbal walkthroughs (separate) and remain outstanding
+      // required guides until real URLs are supplied.
+      {
+        guideId: DEFAULT_GUIDE_IDS.addLead,
+        sent: false,
+        walkthroughProvided: true,
+        walkthroughAt: nowISO(10),
+        walkthroughBy: "Sam Rivera",
+        walkthroughNotes: "Walked through adding a lead verbally on the call (not a sent guide).",
+        audit: [
+          audit(901, nowISO(0), "System", "Guide sent", "Sent", "Not sent", "Corrected: verbal walkthrough must not count as a sent guide"),
+          audit(902, nowISO(0), "System", "Verbal walkthrough", "", "Provided", "Migrated from invalid sent-guide record"),
+        ],
+      },
+      {
+        guideId: DEFAULT_GUIDE_IDS.sendReview,
+        sent: false,
+        walkthroughProvided: true,
+        walkthroughAt: nowISO(10),
+        walkthroughBy: "Sam Rivera",
+        walkthroughNotes: "Walked through sending a review request verbally on the call (not a sent guide).",
+        audit: [
+          audit(903, nowISO(0), "System", "Guide sent", "Sent", "Not sent", "Corrected: verbal walkthrough must not count as a sent guide"),
+          audit(904, nowISO(0), "System", "Verbal walkthrough", "", "Provided", "Migrated from invalid sent-guide record"),
+        ],
+      },
     ],
     callSessions: [
       { id: "call-3-1", clientId: "client-3", date: dateISO(10), staffMember: "Sam Rivera", notes: "Complete onboarding call. All practical tasks verified. Receipt confirmed.", createdAt: nowISO(10) },
@@ -377,5 +409,74 @@ export function seedState(): AppState {
     createdAt: nowISO(1),
   });
 
-  return { clients: [c1, c2, c3, c4], settings };
+  // Internal test records (RECORD A & B) — clearly labelled, never pre-completed.
+  // These are for practicing the onboarding call flow, NOT completed onboarding examples.
+  // Nathaniel and Jay swap roles so each experiences both the client and observer side.
+  const c5 = makeClient(5, {
+    businessName: "LSP Trial — Onboarding Test",
+    clientName: "Nathaniel",
+    ghlLocationId: undefined,
+    ghlLink: undefined,
+    assignedTeamMember: "Jay",
+    callDate: dateISO(0),
+    plan: "",
+    overallStatus: "not_started",
+    notes: "Internal test record. Nathaniel performs the client-side tasks while Jay observes and records evidence.",
+    accessChecks: makeAccessChecks(5, {}),
+    connections: makeConnections(5, {}),
+    tasks: makeTasks(5, {}),
+    staffVerification: {
+      id: "sv-5",
+      label: "Staff checks recorded result in LSP",
+      status: "not_checked",
+      audit: [],
+    },
+    blockers: [],
+    guides: [
+      { guideId: DEFAULT_GUIDE_IDS.onboardingHub, sent: false, audit: [] },
+      { guideId: DEFAULT_GUIDE_IDS.addLead, sent: false, audit: [] },
+      { guideId: DEFAULT_GUIDE_IDS.sendReview, sent: false, audit: [] },
+    ],
+    callSessions: [],
+    audit: [],
+    isTestRecord: true,
+    testPurpose: "Nathaniel performs the client-side tasks while Jay observes and records evidence.",
+    accountContext: "LSP Trial subaccount",
+    createdAt: nowISO(0),
+  });
+
+  const c6 = makeClient(6, {
+    businessName: "LSP Main — Onboarding Test",
+    clientName: "Jay",
+    ghlLocationId: undefined,
+    ghlLink: undefined,
+    assignedTeamMember: "Nathaniel",
+    callDate: dateISO(0),
+    plan: "",
+    overallStatus: "not_started",
+    notes: "Internal test record. Jay performs the client-side tasks while Nathaniel observes and records evidence.",
+    accessChecks: makeAccessChecks(6, {}),
+    connections: makeConnections(6, {}),
+    tasks: makeTasks(6, {}),
+    staffVerification: {
+      id: "sv-6",
+      label: "Staff checks recorded result in LSP",
+      status: "not_checked",
+      audit: [],
+    },
+    blockers: [],
+    guides: [
+      { guideId: DEFAULT_GUIDE_IDS.onboardingHub, sent: false, audit: [] },
+      { guideId: DEFAULT_GUIDE_IDS.addLead, sent: false, audit: [] },
+      { guideId: DEFAULT_GUIDE_IDS.sendReview, sent: false, audit: [] },
+    ],
+    callSessions: [],
+    audit: [],
+    isTestRecord: true,
+    testPurpose: "Jay performs the client-side tasks while Nathaniel observes and records evidence.",
+    accountContext: "LSP Main subaccount",
+    createdAt: nowISO(0),
+  });
+
+  return { clients: [c1, c2, c3, c4, c5, c6], settings };
 }

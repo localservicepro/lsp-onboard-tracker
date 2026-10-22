@@ -45,8 +45,9 @@ function Dashboard() {
 
   const clients = useMemo(() => {
     const q = query.trim().toLowerCase();
+    const guides = state.settings.guides;
     return state.clients
-      .map((c) => ({ client: c, derived: derivedOverallStatus(c) }))
+      .map((c) => ({ client: c, derived: derivedOverallStatus(c, guides) }))
       .filter(({ client, derived }) => {
         if (staff !== "all" && client.assignedTeamMember !== staff) return false;
         if (status !== "all" && derived !== status) return false;
@@ -56,15 +57,16 @@ function Dashboard() {
         }
         return true;
       });
-  }, [state.clients, query, staff, status]);
+  }, [state.clients, state.settings.guides, query, staff, status]);
 
   const totals = useMemo(() => {
     const all = state.clients;
-    const blocked = all.filter((c) => derivedOverallStatus(c) === "blocked").length;
-    const completed = all.filter((c) => derivedOverallStatus(c) === "completed").length;
+    const guides = state.settings.guides;
+    const blocked = all.filter((c) => derivedOverallStatus(c, guides) === "blocked").length;
+    const completed = all.filter((c) => derivedOverallStatus(c, guides) === "completed").length;
     const openBlockers = all.reduce((n, c) => n + unresolvedBlockers(c).length, 0);
     return { total: all.length, blocked, completed, openBlockers };
-  }, [state.clients]);
+  }, [state.clients, state.settings.guides]);
 
   return (
     <div className="space-y-6">
@@ -146,10 +148,11 @@ function Dashboard() {
                 </tr>
               )}
               {clients.map(({ client, derived }) => {
+                const guides = state.settings.guides;
                 const conn = connectionProgress(client);
                 const prac = practiceProgress(client);
                 const sv = staffVerificationProgress(client);
-                const block = completionBlock(client);
+                const block = completionBlock(client, guides);
                 return (
                   <tr key={client.id} className="hover:bg-accent/10 transition-colors">
                     <td className="px-4 py-3.5">

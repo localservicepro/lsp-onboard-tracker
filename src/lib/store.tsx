@@ -96,6 +96,9 @@ export interface NewClientInput {
   plan: string;
   notes?: string | undefined;
   nextCallDate?: string | undefined;
+  isTestRecord?: boolean | undefined;
+  testPurpose?: string | undefined;
+  accountContext?: string | undefined;
 }
 
 export interface NewBlockerInput {
@@ -187,6 +190,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       guides,
       callSessions: [],
       audit: [],
+      isTestRecord: input.isTestRecord,
+      testPurpose: input.testPurpose,
+      accountContext: input.accountContext,
       createdAt: now,
       updatedAt: now,
     };
@@ -360,13 +366,20 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             updatedAt: ts(),
             guides: c.guides.map((g) => {
               if (g.guideId !== guideId) return g;
-              const from = g.sent ? "Sent" : "Not sent";
+              const fromSent = g.sent ? "Sent" : "Not sent";
+              const fromWalk = g.walkthroughProvided ? "Walkthrough" : "No walkthrough";
               const next: GuideSentRecord = { ...g, ...patch };
+              const logs: AuditEntry[] = [...g.audit];
               if (patch.sent !== undefined && patch.sent !== g.sent) {
-                next.audit = pushAudit(g.audit, actor, `Guide: ${guideId}`, from, patch.sent ? "Sent" : "Not sent", reason ?? "Guide send recorded");
-              } else if (reason) {
-                next.audit = pushAudit(g.audit, actor, `Guide: ${guideId}`, from, from, reason);
+                logs.push({ id: nextId("aud"), at: ts(), actor, field: `Guide: ${guideId} (sent)`, from: fromSent, to: patch.sent ? "Sent" : "Not sent", reason: reason ?? "Guide send recorded" });
               }
+              if (patch.walkthroughProvided !== undefined && patch.walkthroughProvided !== g.walkthroughProvided) {
+                logs.push({ id: nextId("aud"), at: ts(), actor, field: `Guide: ${guideId} (walkthrough)`, from: fromWalk, to: patch.walkthroughProvided ? "Walkthrough" : "No walkthrough", reason: reason ?? "Verbal walkthrough recorded" });
+              }
+              if (logs.length === g.audit.length && reason) {
+                logs.push({ id: nextId("aud"), at: ts(), actor, field: `Guide: ${guideId}`, from: fromSent, to: fromSent, reason });
+              }
+              next.audit = logs;
               return next;
             }),
           };
