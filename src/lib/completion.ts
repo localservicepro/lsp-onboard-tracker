@@ -10,7 +10,12 @@
 //  - "Sent" and "Receipt confirmed" stay distinct review outcomes.
 //  - A missing guide (no URL) cannot count as Sent. A verbal walkthrough is a
 //    separate activity and never counts as guide delivery.
+//  - A guideDerived staff_check (e.g. "Required how-to guides supplied") is
+//    auto-calculated from the call's guide records — it is Done only when every
+//    required guide is sent-valid OR explicitly exempted. It is never edited
+//    directly and never counts a verbal walkthrough as a sent guide.
 //  - Not applicable requires a reason + reviewer acknowledgement.
+//  - Each underlying unresolved item is counted ONCE (no double-counting).
 
 import type { Client, Call, CallItem, CallStatus, GuideLink, CallGuideRecord } from "./types";
 
@@ -31,6 +36,8 @@ export interface CompletionBlock {
 
 export function isItemDone(item: CallItem): boolean {
   if (item.status !== "done") return false;
+  // Guide-derived items are auto-calculated — no evidence/completedBy required.
+  if (item.guideDerived) return true;
   if (!item.completedBy?.trim()) return false;
   if (!item.completedAt) return false;
   if (item.kind === "client_action") {
@@ -66,13 +73,44 @@ export function itemStatusLabel(item: CallItem): string {
   return "Not checked";
 }
 
+// ---- Guide-derived item status ----
+// A guideDerived staff_check is auto-calculated from the call's guide records.
+// Returns the effective ItemStatus the item should display/evaluate as.
+export function guideDerivedStatus(call: Call, item: CallItem, guides: GuideLink[] = []): CallItem["status"] {
+  if (!item.guideDerived) return item.status;
+  const records = call.guides;
+  if (records.length === 0) return "not_checked";
+  // Every guide must be sent-valid OR explicitly exempted.
+  const allOk = records.every((g) => isGuideSentValid(g, guides) || isGuideExempt(g));
+  if (allOk) return "done";
+  // If any guide has an actual recorded issue (marked sent but invalid), that's
+  // a real problem → needs_help. Otherwise it's simply outstanding → not_checked.
+  const hasIssue = records.some(
+    (g) => g.sent && !isGuideSentValid(g, guides) && !isGuideExempt(g),
+  );
+  return hasIssue ? "needs_help" : "not_checked";
+}
+
+// Effective item for all downstream checks: guideDerived items use the derived
+// status; everything else uses the stored status.
+export function effectiveItem(call: Call, item: CallItem, guides: GuideLink[] = []): CallItem {
+  if (item.guideDerived) {
+    const st = guideDerivedStatus(call, item, guides);
+    if (st !== item.status) {
+      return { ...item, status: st };
+    }
+  }
+  return item;
+}
+
 // ---- Call-level ----
 
-export function callItemProgress(call: Call): Progress {
-  const applicable = call.items.filter((i) => !isItemExempt(i));
-  const done = call.items.filter((i) => i.status === "done" && isItemDone(i)).length;
-  const exemptCount = call.items.filter(isItemExempt).length;
-  const needsHelpCount = call.items.filter(itemNeedsFollowUp).length;
+export function callItemProgress(call: Call, guides: GuideLink[] = []): Progress {
+  const items = call.items.map((i) => effectiveItem(call, i, guides));
+  const applicable = items.filter((i) => !isItemExempt(i));
+  const done = items.filter((i) => i.status === "done" && isItemDone(i)).length;
+  const exemptCount = items.filter(isItemExempt).length;
+  const needsHelpCount = items.filter(itemNeedsFollowUp).length;
   const total = applicable.length;
   return {
     done,
@@ -85,21 +123,33 @@ export function callItemProgress(call: Call): Progress {
 
 export function callCompletionBlock(call: Call, guides: GuideLink[] = []): CompletionBlock {
   const reasons: string[] = [];
+  const items = call.items.map((i) => effectiveItem(call, i, guides));
+
+  // Needs-help items are actual issues — they block completion. Counted once.
+  const needsHelp = items.filter(itemNeedsFollowUp);
+  if (needsHelp.length > 0) {
+    reasons.push(
+      `${needsHelp.length} item(s) need help (unresolved issues): ${needsHelp
+        .map((i) => i.label)
+        .join("; ")}`,
+    );
+  }
 
   // Required items not satisfied (done with proof, or N/A with reason + ack).
-  const unsatisfiedRequired = call.items.filter((i) => i.required && !isItemSatisfied(i));
+  // Exclude needs_help (already counted above) so we don't double-count.
+  const unsatisfiedRequired = items.filter(
+    (i) => i.required && !isItemSatisfied(i) && !itemNeedsFollowUp(i),
+  );
   if (unsatisfiedRequired.length > 0) {
-    const notChecked = unsatisfiedRequired.filter((i) => i.status === "not_checked").length;
-    const needsHelp = unsatisfiedRequired.filter((i) => i.status === "needs_help").length;
+    const notChecked = unsatisfiedRequired.filter((i) => i.status === "not_checked");
     reasons.push(
-      `${unsatisfiedRequired.length} required checklist item(s) not completed` +
-        (needsHelp > 0 ? ` (${needsHelp} need help)` : "") +
-        (notChecked > 0 ? ` (${notChecked} still not checked)` : ""),
+      `${unsatisfiedRequired.length} required item(s) not completed` +
+        (notChecked.length > 0 ? ` (${notChecked.length} still not checked)` : ""),
     );
   }
 
   // Invalid N/A (no reason or no reviewer acknowledgement).
-  const invalidNa = call.items.filter(
+  const invalidNa = items.filter(
     (i) =>
       i.status === "not_applicable" &&
       (!i.notApplicableReason?.trim() || !i.acknowledgedByReviewer),
@@ -110,12 +160,6 @@ export function callCompletionBlock(call: Call, guides: GuideLink[] = []): Compl
     );
   }
 
-  // Needs-help items are actual issues — they block completion.
-  const needsHelp = call.items.filter(itemNeedsFollowUp);
-  if (needsHelp.length > 0) {
-    reasons.push(`${needsHelp.length} item(s) need help (unresolved issues)`);
-  }
-
   // Guides: a guide with a configured URL that is outstanding (not sent-valid,
   // not exempted) blocks completion. A missing-URL guide cannot be sent but is
   // surfaced as outstanding follow-up rather than a hard call blocker.
@@ -124,10 +168,9 @@ export function callCompletionBlock(call: Call, guides: GuideLink[] = []): Compl
   );
   if (outstandingUrlGuides.length > 0) {
     reasons.push(
-      `${outstandingUrlGuides.length} guide(s) with a configured link not sent or exempted (e.g. ${outstandingUrlGuides
+      `${outstandingUrlGuides.length} guide(s) with a configured link not sent or exempted: ${outstandingUrlGuides
         .map((g) => guideLabel(g, guides))
-        .slice(0, 2)
-        .join(", ")})`,
+        .join("; ")}`,
     );
   }
   // Guides marked sent but invalid (no URL / "Guide link not added" / missing details).
@@ -142,8 +185,9 @@ export function callCompletionBlock(call: Call, guides: GuideLink[] = []): Compl
 }
 
 export function deriveCallStatus(call: Call, guides: GuideLink[] = []): CallStatus {
+  const items = call.items.map((i) => effectiveItem(call, i, guides));
   // Any needs_help item (an actual recorded issue) → needs follow-up.
-  if (call.items.some(itemNeedsFollowUp)) return "needs_followup";
+  if (items.some(itemNeedsFollowUp)) return "needs_followup";
   // Invalid sent guides → needs follow-up (a real issue, not just unfinished).
   if (call.guides.some((g) => g.sent && !isGuideSentValid(g, guides))) return "needs_followup";
 
@@ -151,7 +195,7 @@ export function deriveCallStatus(call: Call, guides: GuideLink[] = []): CallStat
   if (block.ok) return "completed";
 
   const touched =
-    call.items.some((i) => i.status !== "not_checked") ||
+    items.some((i) => i.status !== "not_checked") ||
     call.guides.some((g) => g.sent || g.walkthroughProvided) ||
     !!call.notes?.trim() ||
     !!call.finishedAt;
@@ -249,7 +293,8 @@ export interface FollowUpAction {
 export function outstandingActions(client: Client, guides: GuideLink[]): FollowUpAction[] {
   const out: FollowUpAction[] = [];
   for (const call of client.calls) {
-    for (const item of call.items) {
+    const items = call.items.map((i) => effectiveItem(call, i, guides));
+    for (const item of items) {
       if (itemNeedsFollowUp(item)) {
         out.push({
           clientId: client.id,

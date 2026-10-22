@@ -114,6 +114,7 @@ export function buildCallItems(template: ChecklistTemplate): CallItem[] {
       required: ti.required,
       status: "not_checked" as ItemStatus,
       reviewSend: ti.reviewSend,
+      guideDerived: ti.guideDerived,
       helpText: ti.helpText,
       audit: [],
     }));
@@ -301,13 +302,9 @@ export function seedState(): AppState {
           reviewOutcome: "sent",
         };
       if (l.startsWith("required how-to guides"))
-        return {
-          ...it,
-          status: "done",
-          evidence: "Onboarding hub guide emailed.",
-          completedBy: "Jordan Patel",
-          completedAt: nowISO(5),
-        };
+        // guideDerived: auto-calculated. Onboarding hub is sent-valid, but
+        // add-lead/send-review are outstanding → NOT done. Leave not_checked.
+        return it;
       if (l.startsWith("client questions answered"))
         return {
           ...it,
@@ -484,13 +481,11 @@ export function seedState(): AppState {
           completedAt: nowISO(10),
         };
       if (l.startsWith("required how-to guides"))
-        return {
-          ...it,
-          status: "done",
-          evidence: "Onboarding hub guide emailed.",
-          completedBy: "Sam Rivera",
-          completedAt: nowISO(10),
-        };
+        // guideDerived: auto-calculated from guide records. Onboarding hub is
+        // sent-valid, but add-lead/send-review are outstanding (walkthroughs
+        // only) → this item is NOT done. Leave status not_checked; the
+        // completion layer derives it.
+        return it;
       if (l.startsWith("client questions answered"))
         return {
           ...it,
@@ -515,8 +510,10 @@ export function seedState(): AppState {
         };
       // CORRECTION: add-lead / send-review previously marked "Sent" with
       // "Guide link not added (verbal walkthrough)". That was incorrect — a
-      // verbal walkthrough is NOT a sent guide. Recorded as walkthroughs only;
-      // they remain outstanding required guides until real URLs are supplied.
+      // verbal walkthrough is NOT a sent guide. Recorded as walkthroughs only.
+      // For this completed example, the two mobile guides have no configured URL
+      // and cannot be sent, so they are explicitly exempted (reason + reviewer
+      // ack) so the guide-derived "Required how-to guides supplied" item is Done.
       if (g.guideId === DEFAULT_GUIDE_IDS.addLead)
         return {
           ...g,
@@ -525,6 +522,8 @@ export function seedState(): AppState {
           walkthroughAt: nowISO(10),
           walkthroughBy: "Sam Rivera",
           walkthroughNotes: "Walked through adding a lead verbally on the call (not a sent guide).",
+          notApplicableReason: "No mobile add-lead guide URL configured yet; walkthrough provided on call.",
+          acknowledgedByReviewer: true,
           audit: [
             audit(
               nowISO(0),
@@ -541,6 +540,14 @@ export function seedState(): AppState {
               "",
               "Provided",
               "Migrated from invalid sent-guide record",
+            ),
+            audit(
+              nowISO(10),
+              "Sam Rivera",
+              "Guide exemption",
+              "",
+              "Exempted",
+              "No configured URL; exempted with reviewer acknowledgement",
             ),
           ],
         };
@@ -553,6 +560,9 @@ export function seedState(): AppState {
           walkthroughBy: "Sam Rivera",
           walkthroughNotes:
             "Walked through sending a review request verbally on the call (not a sent guide).",
+          notApplicableReason:
+            "No mobile send-review guide URL configured yet; walkthrough provided on call.",
+          acknowledgedByReviewer: true,
           audit: [
             audit(
               nowISO(0),
@@ -569,6 +579,14 @@ export function seedState(): AppState {
               "",
               "Provided",
               "Migrated from invalid sent-guide record",
+            ),
+            audit(
+              nowISO(10),
+              "Sam Rivera",
+              "Guide exemption",
+              "",
+              "Exempted",
+              "No configured URL; exempted with reviewer acknowledgement",
             ),
           ],
         };

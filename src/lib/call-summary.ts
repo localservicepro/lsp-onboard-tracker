@@ -5,6 +5,7 @@ import {
   isItemExempt,
   itemNeedsFollowUp,
   itemStatusLabel,
+  effectiveItem,
   callCompletionBlock,
   deriveCallStatus,
   deriveClientStatus,
@@ -21,10 +22,11 @@ export function buildCallSummary(client: Client, call: Call, guides: GuideLink[]
   const clientStatus = deriveClientStatus(client, guides);
   const block = callCompletionBlock(call, guides);
 
-  const completed = call.items.filter((i) => i.status === "done" && isItemDone(i));
-  const needsHelp = call.items.filter(itemNeedsFollowUp);
-  const exempt = call.items.filter(isItemExempt);
-  const notChecked = call.items.filter((i) => i.status === "not_checked");
+  const effItems = call.items.map((i) => effectiveItem(call, i, guides));
+  const completed = effItems.filter((i) => i.status === "done" && isItemDone(i));
+  const needsHelp = effItems.filter(itemNeedsFollowUp);
+  const exempt = effItems.filter(isItemExempt);
+  const notChecked = effItems.filter((i) => i.status === "not_checked");
 
   const guidesSent = call.guides.filter((g) => isGuideSentValid(g, guides));
   const walkthroughs = call.guides.filter((g) => g.walkthroughProvided);
@@ -264,7 +266,8 @@ export function buildClientSummary(client: Client, guides: GuideLink[] = []): st
     due?: string | undefined;
   }[] = [];
   for (const c of client.calls) {
-    for (const it of c.items) {
+    const effItems = c.items.map((i) => effectiveItem(c, i));
+    for (const it of effItems) {
       if (itemNeedsFollowUp(it)) {
         openActions.push({
           call: c.type === "connection" ? "Connection" : "Onboarding",

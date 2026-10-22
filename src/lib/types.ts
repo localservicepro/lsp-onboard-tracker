@@ -57,6 +57,9 @@ export interface CallItem {
   reviewOutcome?: ReviewOutcome | undefined;
   // Marks the "send review request" item so the review-outcome selector shows.
   reviewSend?: boolean | undefined;
+  // Marks an auto-derived staff_check (e.g. "Required how-to guides supplied").
+  // Its status is computed from the call's guide records, not edited directly.
+  guideDerived?: boolean | undefined;
   // Help text / guide link id hint copied from the template.
   helpText?: string | undefined;
   audit: AuditEntry[];
@@ -140,6 +143,10 @@ export interface TemplateItem {
   archived?: boolean | undefined;
   helpText?: string | undefined;
   reviewSend?: boolean | undefined;
+  // When true this staff_check item is auto-derived from the call's guide
+  // records (sent-valid or exempted) and is NOT independently editable. It
+  // becomes Done only when every required guide is satisfied or exempted.
+  guideDerived?: boolean | undefined;
 }
 
 export interface ChecklistTemplate {
@@ -271,6 +278,12 @@ export const DEFAULT_ONBOARDING_ITEMS: Omit<TemplateItem, "id">[] = [
     required: true,
     reviewSend: true,
   },
-  { label: "Required how-to guides supplied", kind: "staff_check", required: true },
+  {
+    label: "Required how-to guides supplied",
+    kind: "staff_check",
+    required: true,
+    // Auto-calculated from the call's guide records — not independently editable.
+    guideDerived: true,
+  },
   { label: "Client questions answered and next steps agreed", kind: "staff_check", required: true },
 ];

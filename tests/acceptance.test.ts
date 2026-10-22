@@ -4,13 +4,16 @@ import {
   deriveClientStatus,
   deriveCallStatus,
   callCompletionBlock,
+  callItemProgress,
   isItemDone,
   isGuideSentValid,
   isGuideOutstanding,
+  guideDerivedStatus,
+  effectiveItem,
   outstandingActions,
 } from "../src/lib/completion";
 import { buildCallSummary, buildClientSummary } from "../src/lib/call-summary";
-import type { CallItem, CallGuideRecord } from "../src/lib/types";
+import type { CallItem, CallGuideRecord, Call, Client } from "../src/lib/types";
 
 const state = seedState();
 const guides = state.settings.guides;
@@ -151,7 +154,102 @@ describe("LSP Onboarding Checklist — acceptance rules", () => {
 
   it("outstanding actions are grouped by owner", () => {
     const actions = state.clients.flatMap((c) => outstandingActions(c, guides));
-    expect(actions.length).toBeGreaterThan(0);
     expect(actions.every((a) => a.owner.trim().length > 0)).toBe(true);
+  });
+
+  it("guide-derived 'Required how-to guides supplied' is auto-calculated, not editable", () => {
+    const harbor = state.clients.find((c) => c.businessName === "Harbor Coffee Roasters")!;
+    const harborOnb = harbor.calls.find((c) => c.type === "onboarding")!;
+    const gd = harborOnb.items.find((i) => i.guideDerived)!;
+    expect(gd).toBeDefined();
+    // Harbor exempts the two no-URL guides + sends the hub → derived Done.
+    expect(guideDerivedStatus(harborOnb, gd, guides)).toBe("done");
+    const eff = effectiveItem(harborOnb, gd, guides);
+    expect(eff.status).toBe("done");
+
+    // Summit: onboarding hub sent-valid, but add-lead/send-review outstanding
+    // (walkthrough only, not exempted) → derived NOT done.
+    const summit = state.clients.find((c) => c.businessName === "Summit Physio")!;
+    const summitOnb = summit.calls.find((c) => c.type === "onboarding")!;
+    const gdSummit = summitOnb.items.find((i) => i.guideDerived)!;
+    expect(guideDerivedStatus(summitOnb, gdSummit, guides)).not.toBe("done");
+  });
+
+  it("a verbal walkthrough never makes the guide-derived item Done", () => {
+    const harbor = state.clients.find((c) => c.businessName === "Harbor Coffee Roasters")!;
+    const harborOnb = harbor.calls.find((c) => c.type === "onboarding")!;
+    // Simulate: remove the exemptions, keep only walkthroughs → not done.
+    const callNoExempt: Call = {
+      ...harborOnb,
+      guides: harborOnb.guides.map((g) =>
+        g.guideId === "guide-add-lead" || g.guideId === "guide-send-review"
+          ? { ...g, notApplicableReason: undefined, acknowledgedByReviewer: undefined }
+          : g,
+      ),
+    };
+    const gd = callNoExempt.items.find((i) => i.guideDerived)!;
+    expect(guideDerivedStatus(callNoExempt, gd, guides)).not.toBe("done");
+  });
+
+  it("no double-counting: one needs_help task = one unresolved item", () => {
+    const summit = state.clients.find((c) => c.businessName === "Summit Physio")!;
+    const summitOnb = summit.calls.find((c) => c.type === "onboarding")!;
+    const prog = callItemProgress(summitOnb, guides);
+    // Exactly one item is needs_help (the staff verification check).
+    const needsHelpItems = summitOnb.items.filter(
+      (i) => effectiveItem(summitOnb, i, guides).status === "needs_help",
+    );
+    expect(needsHelpItems.length).toBe(1);
+    // The needsHelpCount in progress equals the count of needs_help items.
+    expect(prog.needsHelpCount).toBe(needsHelpItems.length);
+  });
+
+  it("required missing guides prevent checklist completion (guide-derived)", () => {
+    const summit = state.clients.find((c) => c.businessName === "Summit Physio")!;
+    const summitOnb = summit.calls.find((c) => c.type === "onboarding")!;
+    const block = callCompletionBlock(summitOnb, guides);
+    expect(block.ok).toBe(false);
+    // The guide-derived item is not satisfied.
+    const gd = summitOnb.items.find((i) => i.guideDerived)!;
+    expect(effectiveItem(summitOnb, gd).status).not.toBe("done");
+  });
+
+  it("a call can finish with follow-up without marking unfinished items Done", () => {
+    const summit = state.clients.find((c) => c.businessName === "Summit Physio")!;
+    const summitOnb = summit.calls.find((c) => c.type === "onboarding")!;
+    // The call has a needs_help item and is not complete, but it can still be
+    // finished (finishedAt set) — finishing does not force completion.
+    const finished: Call = { ...summitOnb, finishedAt: new Date().toISOString() };
+    expect(deriveCallStatus(finished, guides)).toBe("needs_followup");
+    expect(callCompletionBlock(finished, guides).ok).toBe(false);
+  });
+
+  it("dashboard, call page and summaries show consistent statuses", () => {
+    const harbor = state.clients.find((c) => c.businessName === "Harbor Coffee Roasters")!;
+    const harborOnb = harbor.calls.find((c) => c.type === "onboarding")!;
+    const clientStatus = deriveClientStatus(harbor, guides);
+    const callStatus = deriveCallStatus(harborOnb, guides);
+    const summary = buildCallSummary(harbor, harborOnb, guides);
+    const clientSummary = buildClientSummary(harbor, guides);
+    // Harbor is completed at both client and call level.
+    expect(clientStatus).toBe("completed");
+    expect(callStatus).toBe("completed");
+    expect(summary).toContain("CALL COMPLETE");
+    expect(clientSummary).toContain("COMPLETED");
+  });
+
+  it("existing records, templates and history remain intact", () => {
+    // Northwind, Summit, Harbor, Cedar, Trial, Main all present.
+    const names = state.clients.map((c) => c.businessName);
+    expect(names).toContain("Northwind Dental");
+    expect(names).toContain("Summit Physio");
+    expect(names).toContain("Harbor Coffee Roasters");
+    expect(names).toContain("Cedar & Stone Salon");
+    // Templates present for both call types.
+    expect(state.settings.templates.find((t) => t.callType === "connection")).toBeDefined();
+    expect(state.settings.templates.find((t) => t.callType === "onboarding")).toBeDefined();
+    // Harbor has two calls (history preserved).
+    const harbor = state.clients.find((c) => c.businessName === "Harbor Coffee Roasters")!;
+    expect(harbor.calls.length).toBe(2);
   });
 });

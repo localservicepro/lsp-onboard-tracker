@@ -108,8 +108,11 @@ function Dashboard() {
             LSP Onboarding Checklist
           </h1>
           <p className="mt-1 text-xs sm:text-sm text-muted-foreground max-w-2xl">
-            Track integration & connection calls and onboarding & training calls. Start or continue
-            a call from each client row.
+            Choose a client, start the appropriate call, and update the checklist as you go.{" "}
+            <span className="text-foreground/80">Add Client</span> for a new client,{" "}
+            <span className="text-foreground/80">Start Call</span> for a new session,{" "}
+            <span className="text-foreground/80">Continue Call</span> for an unfinished one. A client
+            name opens its details and history.
           </p>
         </div>
         <button
