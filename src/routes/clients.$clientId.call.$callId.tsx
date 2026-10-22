@@ -1,16 +1,12 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
-import { useState } from "react";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { useRef, useState } from "react";
 import { useStore } from "../lib/store";
 import { deriveCallStatus, callCompletionBlock, callItemProgress } from "../lib/completion";
 import { CALL_TYPE_LABEL } from "../lib/types";
 import { StatusBadge } from "../components/status-badge";
 import { buildCallSummary, copyToClipboard } from "../lib/call-summary";
-import {
-  CallItemRow,
-  GuideDerivedRow,
-  CallGuidesSection,
-  inputCls,
-} from "../components/client-sections";
+import { CallItemRow, GuideDerivedRow, inputCls } from "../components/client-sections";
+import { CallGuidesSection } from "../components/guides-section";
 
 export const Route = createFileRoute("/clients/$clientId/call/$callId")({
   head: () => ({
@@ -29,7 +25,9 @@ export const Route = createFileRoute("/clients/$clientId/call/$callId")({
 
 function CallSessionPage() {
   const { clientId, callId } = Route.useParams();
-  const { state, setCallItem, setCallGuide, updateCall, finishCall } = useStore();
+  const { state, setCallItem, setCallGuide, updateCall, finishCall, saveProgress, updateGuideLink } =
+    useStore();
+  const navigate = useNavigate();
   const client = state.clients.find((c) => c.id === clientId);
   const call = client?.calls.find((c) => c.id === callId);
   const [actor, setActor] = useState(
@@ -39,6 +37,19 @@ function CallSessionPage() {
       "Staff Member",
   );
   const [copied, setCopied] = useState(false);
+  // Save Progress state — honest session-only saving feedback.
+  const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [savedAt, setSavedAt] = useState<string | null>(null);
+  // Finish Call state — visible response, no duplicate submissions.
+  const [finishing, setFinishing] = useState(false);
+  const [finishErr, setFinishErr] = useState("");
+  // Follow-up form (shown when the call is not complete).
+  const [fuAction, setFuAction] = useState(call?.followUpAction ?? "");
+  const [fuOwner, setFuOwner] = useState(call?.followUpOwner ?? actor);
+  const [fuDate, setFuDate] = useState(call?.followUpDate ?? "");
+  const fuActionRef = useRef<HTMLInputElement>(null);
+  const fuOwnerRef = useRef<HTMLSelectElement>(null);
+  const fuDateRef = useRef<HTMLInputElement>(null);
 
   if (!client || !call) {
     return (
@@ -73,13 +84,63 @@ function CallSessionPage() {
   const staffChecks = editableItems.filter((i) => i.kind === "staff_check");
   const guideDerivedItems = call.items.filter((i) => i.guideDerived);
 
-  const onFinish = () =>
-    finishCall(
-      client.id,
-      call.id,
-      { followUpAction: call.followUpAction, followUpDate: call.followUpDate },
-      actor,
-    );
+  const onSaveProgress = async () => {
+    if (saveState === "saving") return; // prevent duplicate clicks
+    setSaveState("saving");
+    try {
+      // Persist the follow-up fields along with the rest of the in-memory state.
+      updateCall(client.id, call.id, { followUpAction: fuAction, followUpOwner: fuOwner, followUpDate: fuDate || undefined }, actor);
+      await saveProgress();
+      setSavedAt(new Date().toLocaleTimeString());
+      setSaveState("saved");
+    } catch {
+      setSaveState("error");
+    }
+  };
+
+  // Finish Call: a call session ends; the checklist may or may not be complete.
+  // When follow-up is required, next action + owner + date are required and
+  // highlighted; the first missing field is scrolled into view. Finishing does
+  // NOT force incomplete items to Done. Prevents duplicate submissions.
+  const onFinish = async () => {
+    if (finishing) return;
+    setFinishErr("");
+    if (!block.ok) {
+      // Follow-up required — validate the follow-up fields.
+      const missing: string[] = [];
+      if (!fuAction.trim()) missing.push("next action");
+      if (!fuOwner.trim()) missing.push("owner");
+      if (!fuDate) missing.push("follow-up date");
+      if (missing.length > 0) {
+        setFinishErr(`Follow-up required — add: ${missing.join(", ")}.`);
+        if (!fuAction.trim() && fuActionRef.current) fuActionRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
+        else if (!fuOwner.trim() && fuOwnerRef.current) fuOwnerRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
+        else if (!fuDate && fuDateRef.current) fuDateRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
+        if (!fuAction.trim()) fuActionRef.current?.focus();
+        else if (!fuOwner.trim()) fuOwnerRef.current?.focus();
+        else if (!fuDate) fuDateRef.current?.focus();
+        return;
+      }
+    }
+    setFinishing(true);
+    try {
+      finishCall(
+        client.id,
+        call.id,
+        {
+          followUpAction: fuAction.trim() || undefined,
+          followUpOwner: fuOwner.trim() || undefined,
+          followUpDate: fuDate || undefined,
+        },
+        actor,
+      );
+      navigate({ to: "/clients/$clientId", params: { clientId: client.id } });
+    } catch (e) {
+      setFinishing(false);
+      setFinishErr("Could not finish the call. Please try again.");
+      void e;
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -202,6 +263,7 @@ function CallSessionPage() {
         onSetGuide={(guideId, patch, reason) =>
           setCallGuide(client.id, call.id, guideId, patch, actor, reason)
         }
+        onUpdateGuideLink={(guideId, patch) => updateGuideLink(guideId, patch)}
       />
 
       {/* Auto-derived guide item (read-only) */}
@@ -238,26 +300,26 @@ function CallSessionPage() {
         {!block.ok && (
           <div className="rounded-xl border border-amber-500/40 bg-amber-500/5 p-3 space-y-2.5">
             <div className="text-xs font-bold text-amber-300">
-              Follow-up required to complete this call
+              Follow-up required to complete this call — record the next action, owner and date.
             </div>
             <div className="grid gap-2 sm:grid-cols-3 text-xs">
               <div>
-                <span className="mb-1 block text-[11px] text-muted-foreground">Next Action</span>
+                <span className="mb-1 block text-[11px] text-muted-foreground">Next Action *</span>
                 <input
-                  className={inputCls}
+                  ref={fuActionRef}
+                  className={inputCls + (!fuAction.trim() ? " border-destructive/60" : "")}
                   placeholder="What needs to happen next..."
-                  defaultValue={call.followUpAction ?? ""}
-                  onBlur={(e) =>
-                    updateCall(client.id, call.id, { followUpAction: e.target.value }, actor)
-                  }
+                  value={fuAction}
+                  onChange={(e) => setFuAction(e.target.value)}
                 />
               </div>
               <div>
-                <span className="mb-1 block text-[11px] text-muted-foreground">Owner</span>
+                <span className="mb-1 block text-[11px] text-muted-foreground">Owner *</span>
                 <select
-                  className={inputCls}
-                  value={actor}
-                  onChange={(e) => setActor(e.target.value)}
+                  ref={fuOwnerRef}
+                  className={inputCls + (!fuOwner.trim() ? " border-destructive/60" : "")}
+                  value={fuOwner}
+                  onChange={(e) => setFuOwner(e.target.value)}
                 >
                   {team.map((t) => (
                     <option key={t.id} value={t.name}>
@@ -267,19 +329,13 @@ function CallSessionPage() {
                 </select>
               </div>
               <div>
-                <span className="mb-1 block text-[11px] text-muted-foreground">Follow-up Date</span>
+                <span className="mb-1 block text-[11px] text-muted-foreground">Follow-up Date *</span>
                 <input
+                  ref={fuDateRef}
                   type="date"
-                  className={inputCls}
-                  defaultValue={call.followUpDate ?? ""}
-                  onChange={(e) =>
-                    updateCall(
-                      client.id,
-                      call.id,
-                      { followUpDate: e.target.value || undefined },
-                      actor,
-                    )
-                  }
+                  className={inputCls + (!fuDate ? " border-destructive/60" : "")}
+                  value={fuDate}
+                  onChange={(e) => setFuDate(e.target.value)}
                 />
               </div>
             </div>
@@ -309,7 +365,12 @@ function CallSessionPage() {
       </section>
 
       {/* Finish — one clear result */}
-      <div className="flex flex-wrap justify-end gap-3 pt-2">
+      {finishErr && (
+        <div className="rounded-xl border border-destructive/50 bg-destructive/10 px-4 py-2 text-xs font-semibold text-destructive">
+          {finishErr}
+        </div>
+      )}
+      <div className="flex flex-wrap items-center justify-end gap-3 pt-2">
         <Link
           to="/clients/$clientId"
           params={{ clientId }}
@@ -317,24 +378,39 @@ function CallSessionPage() {
         >
           ← Back to Client
         </Link>
-        <button
-          onClick={() =>
-            updateCall(
-              client.id,
-              call.id,
-              { followUpAction: call.followUpAction, followUpDate: call.followUpDate },
-              actor,
-            )
-          }
-          className="rounded-xl border border-border bg-card px-4 py-2 text-xs font-bold text-foreground hover:bg-secondary min-h-[40px]"
-        >
-          Save Progress — this session only
-        </button>
+        <div className="flex items-center gap-2">
+          {saveState === "saved" && savedAt && (
+            <span className="text-xs text-chart-1 font-semibold">✓ Progress saved {savedAt}</span>
+          )}
+          {saveState === "error" && (
+            <span className="text-xs text-destructive font-semibold">Save failed</span>
+          )}
+          <button
+            onClick={onSaveProgress}
+            disabled={saveState === "saving"}
+            className="rounded-xl border border-border bg-card px-4 py-2 text-xs font-bold text-foreground hover:bg-secondary disabled:opacity-60 min-h-[40px] cursor-pointer"
+          >
+            {saveState === "saving" ? "Saving…" : "Save Progress — this session only"}
+          </button>
+          {saveState === "error" && (
+            <button
+              onClick={onSaveProgress}
+              className="rounded-xl border border-destructive/40 px-3 py-2 text-xs font-bold text-destructive hover:bg-destructive/10 min-h-[40px] cursor-pointer"
+            >
+              Retry
+            </button>
+          )}
+        </div>
         <button
           onClick={onFinish}
-          className="rounded-xl bg-primary px-5 py-2 text-xs font-bold text-primary-foreground shadow-md shadow-primary/20 hover:bg-primary/90 min-h-[40px]"
+          disabled={finishing}
+          className="rounded-xl bg-primary px-5 py-2 text-xs font-bold text-primary-foreground shadow-md shadow-primary/20 hover:bg-primary/90 disabled:opacity-60 min-h-[40px] cursor-pointer"
         >
-          {block.ok ? "Finish Call ✓ — completed" : "Finish Call — follow-up required"}
+          {finishing
+            ? "Finishing…"
+            : block.ok
+              ? "Finish Call ✓ — checklist completed"
+              : "Finish Call — follow-up required"}
         </button>
       </div>
     </div>

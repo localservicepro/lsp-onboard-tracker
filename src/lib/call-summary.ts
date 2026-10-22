@@ -1,7 +1,6 @@
 import type { Client, Call, GuideLink } from "./types";
 import {
   isItemDone,
-  isItemSatisfied,
   isItemExempt,
   itemNeedsFollowUp,
   itemStatusLabel,
@@ -14,7 +13,7 @@ import {
   isGuideExempt,
   isGuideOutstanding,
   guideLabel,
-  guideHasUrl,
+  guideIsSupplied,
 } from "./completion";
 
 // Build a short, readable call summary. RECORD only — copying never sends anything.
@@ -170,7 +169,7 @@ export function buildCallSummary(client: Client, call: Call, guides: GuideLink[]
   if (outstandingGuides.length > 0) {
     lines.push(`GUIDES STILL OUTSTANDING (${outstandingGuides.length}):`);
     outstandingGuides.forEach((g) => {
-      const missing = guideHasUrl(g, guides) ? "" : " [Guide link not added]";
+      const missing = guideIsSupplied(g, guides) ? "" : " [Guide link not added]";
       lines.push(`  - ${guideLabel(g, guides)}${missing}`);
     });
     lines.push("");
@@ -282,7 +281,7 @@ export function buildClientSummary(client: Client, guides: GuideLink[] = []): st
       if (g.walkthroughProvided)
         walkthroughs.push({ name, by: g.walkthroughBy, at: g.walkthroughAt });
       if (isGuideOutstanding(g, guides))
-        outstandingGuides.push(name + (guideHasUrl(g, guides) ? "" : " [Guide link not added]"));
+        outstandingGuides.push(name + (guideIsSupplied(g, guides) ? "" : " [Guide link not added]"));
     }
   }
 

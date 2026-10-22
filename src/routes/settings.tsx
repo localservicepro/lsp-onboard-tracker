@@ -58,7 +58,8 @@ function SettingsPage() {
       <section className="rounded-2xl border border-border bg-card p-5">
         <h2 className="font-display text-lg font-semibold text-foreground">How-to guide links</h2>
         <p className="mt-1 text-xs text-muted-foreground">
-          If a link is unavailable, the call shows "Guide link not added". Do not invent a URL.
+          If a link is unavailable, the call shows "Guide link not added". Do not invent a URL. You
+          may instead record a document title and version for a resource supplied outside the app.
         </p>
         <div className="mt-3 space-y-2">
           {state.settings.guides.map((g) => (
@@ -71,7 +72,7 @@ function SettingsPage() {
                 />
                 <button
                   onClick={() => removeGuide(g.id)}
-                  className="text-xs text-destructive underline"
+                  className="text-xs text-destructive underline cursor-pointer"
                 >
                   Remove
                 </button>
@@ -82,7 +83,23 @@ function SettingsPage() {
                 defaultValue={g.url ?? ""}
                 onBlur={(e) => updateGuide(g.id, { url: e.target.value || undefined })}
               />
-              {!g.url && (
+              <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                <input
+                  className={inputCls}
+                  placeholder="Document title (optional)"
+                  defaultValue={g.documentTitle ?? ""}
+                  onBlur={(e) => updateGuide(g.id, { documentTitle: e.target.value || undefined })}
+                />
+                <input
+                  className={inputCls}
+                  placeholder="Version / reference (optional)"
+                  defaultValue={g.documentVersion ?? ""}
+                  onBlur={(e) =>
+                    updateGuide(g.id, { documentVersion: e.target.value || undefined })
+                  }
+                />
+              </div>
+              {!g.url && !(g.documentTitle && g.documentVersion) && (
                 <div className="mt-1 text-xs text-muted-foreground">Guide link not added</div>
               )}
             </div>
@@ -108,7 +125,7 @@ function SettingsPage() {
               setGuideLabel("");
               setGuideUrl("");
             }}
-            className="rounded-xl bg-primary px-3 py-2 text-sm font-medium text-primary-foreground disabled:opacity-50 min-h-[40px]"
+            className="rounded-xl bg-primary px-3 py-2 text-sm font-medium text-primary-foreground disabled:opacity-50 min-h-[40px] cursor-pointer"
           >
             + Add guide
           </button>
@@ -177,14 +194,14 @@ function SettingsPage() {
       <section className="rounded-2xl border border-dashed border-border bg-card p-5">
         <h2 className="font-display text-base font-semibold text-foreground">Reset demo data</h2>
         <p className="mt-1 text-xs text-muted-foreground">
-          Restores the synthetic seed data. Real records are not persisted — this is a prototype
-          held in browser memory.
+          Restores the internal test record and default settings. Records are held in browser memory
+          only — this is a prototype, not securely persisted or shared across staff.
         </p>
         <button
           onClick={reset}
-          className="mt-2 rounded-xl border border-border px-3 py-2 text-sm hover:bg-secondary min-h-[40px]"
+          className="mt-2 rounded-xl border border-border px-3 py-2 text-sm hover:bg-secondary min-h-[40px] cursor-pointer"
         >
-          Reset to synthetic demo data
+          Reset to default data
         </button>
       </section>
     </div>

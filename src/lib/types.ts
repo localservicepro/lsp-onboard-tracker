@@ -102,6 +102,7 @@ export interface Call {
   // type compatibility with optional persistence; the UI always recomputes.
   notes?: string | undefined;
   followUpAction?: string | undefined;
+  followUpOwner?: string | undefined;
   followUpDate?: string | undefined;
   finishedAt?: string | undefined;
   items: CallItem[];
@@ -133,7 +134,11 @@ export interface Client {
 export interface GuideLink {
   id: string;
   label: string;
+  // A configured URL for an in-app guide, OR a document title + version for a
+  // resource supplied outside the app. At least one makes the guide "supplied".
   url?: string | undefined;
+  documentTitle?: string | undefined;
+  documentVersion?: string | undefined;
 }
 
 export interface TeamMember {

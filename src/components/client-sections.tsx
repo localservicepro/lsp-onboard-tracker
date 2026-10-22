@@ -5,7 +5,6 @@ import type {
   GuideLink,
   ItemStatus,
   ReviewOutcome,
-  GuideChannel,
   AuditEntry,
 } from "../lib/types";
 import {
@@ -16,7 +15,6 @@ import {
   guideDerivedStatus,
   guideLabel,
   guideHasUrl,
-  guideUrl,
   isGuideSentValid,
   isGuideExempt,
   isGuideOutstanding,
@@ -25,7 +23,6 @@ import {
   CLIENT_ACTION_STATUSES,
   STAFF_CHECK_STATUSES,
   REVIEW_OUTCOMES,
-  GUIDE_CHANNELS,
 } from "../lib/types";
 
 export const inputCls =
@@ -401,7 +398,7 @@ export function GuideDerivedRow({
       </p>
       {derived !== "done" && outstanding.length > 0 && (
         <div className="mt-2 rounded-lg border border-amber-500/40 bg-amber-500/5 px-2.5 py-1.5 text-xs text-amber-300">
-          <span className="font-bold">Outstanding guides:</span>{" "}
+          <span className="font-bold">Outstanding resources:</span>{" "}
           {outstanding
             .map((g) => guideLabel(g, guides) + (guideHasUrl(g, guides) ? "" : " [link not added]"))
             .join("; ")}
@@ -417,186 +414,3 @@ export function GuideDerivedRow({
   );
 }
 
-export function CallGuidesSection({
-  call,
-  actor,
-  guides,
-  onSetGuide,
-}: {
-  call: Call;
-  actor: string;
-  guides: GuideLink[];
-  onSetGuide: (guideId: string, patch: Partial<CallGuideRecord>, reason?: string) => void;
-}) {
-  return (
-    <section className="rounded-2xl border border-border bg-card p-5">
-      <h2 className="font-display text-lg font-bold text-foreground">
-        Resources &amp; Guide Delivery
-      </h2>
-      <p className="mt-1 text-xs text-muted-foreground">
-        Sending a written guide is different from demonstrating or practising a task (those are
-        tracked on the checklist above). Opening a guide does NOT mark it sent. "Mark sent" requires
-        a valid supplied link, date, channel and staff. A missing guide cannot be marked sent.
-      </p>
-      <div className="mt-3 space-y-3">
-        {call.guides.map((g) => {
-          const label = guideLabel(g, guides);
-          const url = guideUrl(g, guides);
-          const hasUrl = guideHasUrl(g, guides);
-          const sentValid = isGuideSentValid(g, guides);
-          const outstanding = isGuideOutstanding(g, guides);
-          const exempt = isGuideExempt(g);
-
-          return (
-            <div
-              key={g.guideId}
-              className={`rounded-xl border p-3 ${sentValid ? "border-chart-1/40 bg-chart-1/5" : outstanding ? "border-amber-500/40 bg-amber-500/5" : exempt ? "border-accent/30 bg-accent/10" : "border-border bg-background"}`}
-            >
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="text-sm font-bold text-foreground">{label}</div>
-                {hasUrl ? (
-                  <a
-                    href={url}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="inline-flex items-center gap-1 rounded-lg border border-accent/40 bg-accent/10 px-2.5 py-1 text-xs font-semibold text-accent hover:bg-accent/20 transition-colors"
-                  >
-                    Open Guide Link ↗
-                  </a>
-                ) : (
-                  <span className="rounded bg-secondary px-2.5 py-1 text-xs text-muted-foreground">
-                    Guide link not added
-                  </span>
-                )}
-              </div>
-
-              {/* Mark sent — disabled when no URL */}
-              <div className="mt-2.5 flex flex-wrap items-center gap-3 border-t border-border/60 pt-2.5">
-                <label className="flex items-center gap-2 text-xs font-bold cursor-pointer text-foreground">
-                  <input
-                    type="checkbox"
-                    checked={g.sent}
-                    disabled={!hasUrl}
-                    onChange={(e) =>
-                      onSetGuide(
-                        g.guideId,
-                        {
-                          sent: e.target.checked,
-                          sentAt: e.target.checked
-                            ? (g.sentAt ?? new Date().toISOString())
-                            : undefined,
-                          sentBy: e.target.checked ? (g.sentBy ?? actor) : undefined,
-                          channel: e.target.checked ? (g.channel ?? "email") : undefined,
-                          suppliedUrlOrVersion: e.target.checked
-                            ? (g.suppliedUrlOrVersion ?? url ?? "")
-                            : undefined,
-                        },
-                        e.target.checked ? "Guide send recorded" : "Guide send cleared",
-                      )
-                    }
-                    className="h-4 w-4 rounded border-border accent-primary cursor-pointer disabled:opacity-40"
-                  />
-                  <span>Mark as Sent{hasUrl ? "" : " (disabled — no guide URL)"}</span>
-                </label>
-                {g.sent && !sentValid && (
-                  <span className="rounded border border-destructive/40 bg-destructive/15 px-2 py-0.5 text-[11px] font-semibold text-destructive">
-                    Invalid: missing link/date/channel/staff
-                  </span>
-                )}
-              </div>
-
-              {g.sent && (
-                <div className="mt-2.5 grid gap-2 sm:grid-cols-3 text-xs">
-                  <div>
-                    <span className="block text-[11px] text-muted-foreground mb-1">Date Sent:</span>
-                    <input
-                      type="date"
-                      className={inputCls}
-                      defaultValue={g.sentAt?.slice(0, 10) ?? ""}
-                      onChange={(e) =>
-                        onSetGuide(
-                          g.guideId,
-                          {
-                            sentAt: e.target.value
-                              ? new Date(e.target.value).toISOString()
-                              : undefined,
-                          },
-                          actor,
-                        )
-                      }
-                    />
-                  </div>
-                  <div>
-                    <span className="block text-[11px] text-muted-foreground mb-1">Channel:</span>
-                    <select
-                      className={inputCls}
-                      defaultValue={g.channel ?? "email"}
-                      onChange={(e) =>
-                        onSetGuide(g.guideId, { channel: e.target.value as GuideChannel }, actor)
-                      }
-                    >
-                      {GUIDE_CHANNELS.map((c) => (
-                        <option key={c.value} value={c.value}>
-                          {c.label}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <span className="block text-[11px] text-muted-foreground mb-1">Sent By:</span>
-                    <input
-                      className={inputCls}
-                      defaultValue={g.sentBy ?? actor}
-                      onBlur={(e) => onSetGuide(g.guideId, { sentBy: e.target.value }, actor)}
-                    />
-                  </div>
-                  <div className="sm:col-span-3">
-                    <span className="block text-[11px] text-muted-foreground mb-1">
-                      Supplied URL / Version *:
-                    </span>
-                    <input
-                      className={inputCls}
-                      placeholder={hasUrl ? url : "Enter the supplied URL or document version"}
-                      defaultValue={g.suppliedUrlOrVersion ?? ""}
-                      onBlur={(e) =>
-                        onSetGuide(g.guideId, { suppliedUrlOrVersion: e.target.value }, actor)
-                      }
-                    />
-                  </div>
-                </div>
-              )}
-
-              {/* Exemption */}
-              <div className="mt-2.5 rounded-lg border border-border/60 bg-card/40 p-2.5">
-                <div className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider mb-1.5">
-                  Documented Exemption (reason + reviewer ack)
-                </div>
-                <input
-                  className={inputCls}
-                  placeholder="Exemption reason..."
-                  defaultValue={g.notApplicableReason ?? ""}
-                  onBlur={(e) =>
-                    onSetGuide(g.guideId, { notApplicableReason: e.target.value }, actor)
-                  }
-                />
-                <label className="mt-2 flex items-center gap-2 text-xs font-semibold cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={!!g.acknowledgedByReviewer}
-                    onChange={(e) =>
-                      onSetGuide(g.guideId, { acknowledgedByReviewer: e.target.checked }, actor)
-                    }
-                    className="h-4 w-4 rounded border-border accent-primary cursor-pointer"
-                  />
-                  <span>Reviewer acknowledges this exemption.</span>
-                </label>
-              </div>
-
-              {g.audit.length > 0 && <AuditTrail entries={g.audit} />}
-            </div>
-          );
-        })}
-      </div>
-    </section>
-  );
-}

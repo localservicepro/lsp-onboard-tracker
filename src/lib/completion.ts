@@ -177,26 +177,10 @@ export function callCompletionBlock(call: Call, guides: GuideLink[] = []): Compl
     );
   }
 
-  // Guides: a guide with a configured URL that is outstanding (not sent-valid,
-  // not exempted) blocks completion. A missing-URL guide cannot be sent but is
-  // surfaced as outstanding follow-up rather than a hard call blocker.
-  const outstandingUrlGuides = call.guides.filter(
-    (g) => guideHasUrl(g, guides) && !isGuideSentValid(g, guides) && !isGuideExempt(g),
-  );
-  if (outstandingUrlGuides.length > 0) {
-    reasons.push(
-      `${outstandingUrlGuides.length} guide(s) with a configured link not sent or exempted: ${outstandingUrlGuides
-        .map((g) => guideLabel(g, guides))
-        .join("; ")}`,
-    );
-  }
-  // Guides marked sent but invalid (no URL / "Guide link not added" / missing details).
-  const invalidSent = call.guides.filter((g) => g.sent && !isGuideSentValid(g, guides));
-  if (invalidSent.length > 0) {
-    reasons.push(
-      `${invalidSent.length} guide(s) marked Sent without a valid supplied URL/version (verbal walkthrough is not a sent guide)`,
-    );
-  }
+  // Guides are handled by the guideDerived required item (its effective status
+  // is computed from the guide records). A missing/unsent guide that is not
+  // exempted makes that item not done → caught by the required-item check above.
+  // We do NOT add a separate guide reason here to avoid double-counting.
 
   return { ok: reasons.length === 0, reasons };
 }
@@ -205,7 +189,7 @@ export function deriveCallStatus(call: Call, guides: GuideLink[] = []): CallStat
   const items = call.items.map((i) => effectiveItem(call, i, guides));
   // Any needs_help item (an actual recorded issue) → needs follow-up.
   if (items.some(itemNeedsFollowUp)) return "needs_followup";
-  // Invalid sent guides → needs follow-up (a real issue, not just unfinished).
+  // Invalid sent guides (marked sent but not valid) → needs follow-up.
   if (call.guides.some((g) => g.sent && !isGuideSentValid(g, guides))) return "needs_followup";
 
   const block = callCompletionBlock(call, guides);
@@ -257,6 +241,23 @@ export function unfinishedCallOfType(
 }
 
 // ---- Guides ----
+// A guide is "supplied" (configured) if it has a URL OR a document title +
+// version/reference for a resource supplied outside the app.
+export function guideIsSupplied(g: CallGuideRecord, guides: GuideLink[]): boolean {
+  const link = guides.find((d) => d.id === g.guideId);
+  if (!link) return false;
+  if (link.url?.trim()) return true;
+  if (link.documentTitle?.trim() && link.documentVersion?.trim()) return true;
+  return false;
+}
+
+// The supplied reference string for a configured guide (URL or doc title+version).
+export function guideSuppliedRef(link: GuideLink): string | undefined {
+  if (link.url?.trim()) return link.url;
+  if (link.documentTitle?.trim() && link.documentVersion?.trim())
+    return `${link.documentTitle} (v${link.documentVersion})`;
+  return undefined;
+}
 
 export function guideLabel(g: CallGuideRecord, guides: GuideLink[]): string {
   return guides.find((d) => d.id === g.guideId)?.label ?? g.guideId;
@@ -277,9 +278,10 @@ export function isGuideSentValid(g: CallGuideRecord, guides: GuideLink[]): boole
   if (!g.sentBy?.trim()) return false;
   const supplied = g.suppliedUrlOrVersion?.trim();
   if (!supplied) return false;
-  if (/guide link not added/i.test(supplied)) return false;
-  // A guide with no configured URL cannot be sent at all.
-  if (!guideHasUrl(g, guides)) return false;
+  if (/guide link not added|add a resource before recording delivery/i.test(supplied)) return false;
+  // A guide must be configured (supplied) to be sent at all — a missing guide
+  // or a verbal walkthrough can never count as a sent written resource.
+  if (!guideIsSupplied(g, guides)) return false;
   return true;
 }
 

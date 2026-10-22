@@ -55,6 +55,10 @@ interface StoreApi {
   startCall: (clientId: string, type: CallType, staffMember: string, date?: string) => string;
   updateCall: (clientId: string, callId: string, patch: Partial<Call>, actor: string) => void;
   finishCall: (clientId: string, callId: string, patch: Partial<Call>, actor: string) => void;
+  // Session-only save. State already lives in React memory; this simulates a
+  // commit so the UI can show honest saving/saved/error feedback. It does NOT
+  // persist across reloads or share records between browsers/staff.
+  saveProgress: () => Promise<void>;
   // Call items
   setCallItem: (
     clientId: string,
@@ -77,6 +81,7 @@ interface StoreApi {
   updateSettings: (patch: Partial<Settings>) => void;
   addGuide: (label: string, url?: string) => void;
   updateGuide: (id: string, patch: Partial<GuideLink>) => void;
+  updateGuideLink: (id: string, patch: Partial<GuideLink>) => void;
   removeGuide: (id: string) => void;
   addTeamMember: (name: string) => void;
   removeTeamMember: (id: string) => void;
@@ -167,7 +172,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           if (c.id !== clientId) return c;
           const tpl = s.settings.templates.find((t) => t.callType === type);
           const items = tpl ? buildCallItems(tpl) : [];
-          const guides = buildCallGuides(s.settings.guides);
+          // Guides only apply to onboarding calls (the connection template has
+          // no guide-derived item). Avoid attaching meaningless guide records
+          // (and therefore bogus completion blockers) to connection calls.
+          const guides = type === "onboarding" ? buildCallGuides(s.settings.guides) : [];
           const call: Call = {
             id,
             clientId,
@@ -230,6 +238,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     },
     [],
   );
+
+  const saveProgress = useCallback(async (): Promise<void> => {
+    // Session-only: state is already held in React memory. Simulate a commit
+    // so the UI can show honest saving/saved/error feedback. This does NOT
+    // persist across reloads or share records between browsers/staff.
+    await new Promise((resolve) => setTimeout(resolve, 300));
+  }, []);
 
   const setCallItem = useCallback(
     (
@@ -394,6 +409,18 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }));
   }, []);
 
+  // Alias used by the call screen's "Add/Edit Resource" flow — updates the
+  // configured guide link (URL or document title+version) for all calls.
+  const updateGuideLink = useCallback((id: string, patch: Partial<GuideLink>) => {
+    setState((s) => ({
+      ...s,
+      settings: {
+        ...s.settings,
+        guides: s.settings.guides.map((g) => (g.id === id ? { ...g, ...patch } : g)),
+      },
+    }));
+  }, []);
+
   const removeGuide = useCallback((id: string) => {
     setState((s) => ({
       ...s,
@@ -504,11 +531,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       startCall,
       updateCall,
       finishCall,
+      saveProgress,
       setCallItem,
       setCallGuide,
       updateSettings,
       addGuide,
       updateGuide,
+      updateGuideLink,
       removeGuide,
       addTeamMember,
       removeTeamMember,
@@ -527,11 +556,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       startCall,
       updateCall,
       finishCall,
+      saveProgress,
       setCallItem,
       setCallGuide,
       updateSettings,
       addGuide,
       updateGuide,
+      updateGuideLink,
       removeGuide,
       addTeamMember,
       removeTeamMember,

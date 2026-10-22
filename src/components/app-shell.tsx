@@ -64,12 +64,10 @@ export function AppShell({ children }: { children: ReactNode }) {
       </header>
       <main className="mx-auto max-w-6xl px-4 py-6">{children ?? <Outlet />}</main>
       <footer className="mx-auto max-w-6xl px-4 pb-10 pt-6">
-        <div className="rounded-lg border border-dashed border-border bg-card/50 p-3 text-xs text-muted-foreground">
-          <strong className="font-medium text-foreground">Prototype — this session only:</strong>{" "}
-          this tool uses synthetic demo data held in browser memory. Reloading the page may lose
-          your changes, and records are not shared across browsers or staff. Do not enter real
-          client PII or credentials. Secure staff authentication and shared persistent storage are
-          required before real client use.
+        <div className="rounded-md border border-border/70 bg-card/40 px-3 py-1.5 text-[11px] text-muted-foreground">
+          <strong className="font-medium text-foreground/90">Session-only storage</strong> — changes
+          may be lost on reload and are not shared across browsers or staff. Secure staff
+          authentication and shared persistent storage are required before real client use.
         </div>
       </footer>
     </div>
