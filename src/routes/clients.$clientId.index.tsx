@@ -64,7 +64,7 @@ export function ClientDetailPage() {
   const nextType = nextCallTypeForClient(client);
   const unfinished = unfinishedCallOfType(client, nextType);
 
-  const onStart = (type: CallType) => {
+  const onStart = async (type: CallType) => {
     const existing = unfinishedCallOfType(client, type);
     if (existing) {
       navigate({
@@ -72,7 +72,8 @@ export function ClientDetailPage() {
         params: { clientId: client.id, callId: existing.id },
       });
     } else {
-      const id = startCall(
+      // Await DB persistence so we navigate with the real database call id.
+      const callId = await startCall(
         client.id,
         type,
         client.assignedTeamMember,
@@ -80,7 +81,7 @@ export function ClientDetailPage() {
       );
       navigate({
         to: "/clients/$clientId/call/$callId",
-        params: { clientId: client.id, callId: id },
+        params: { clientId: client.id, callId },
       });
     }
   };

@@ -76,7 +76,7 @@ function Dashboard() {
     return { total: all.length, blocked, completed };
   }, [state.clients, guides]);
 
-  const onStart = (clientId: string, type: CallType) => {
+  const onStart = async (clientId: string, type: CallType) => {
     const client = state.clients.find((c) => c.id === clientId);
     if (!client) return;
     // Reuse an existing unfinished call of this type, else start a new one.
@@ -87,13 +87,14 @@ function Dashboard() {
         params: { clientId, callId: existing.id },
       });
     } else {
-      const id = startCall(
+      // Await DB persistence so we navigate with the real database call id.
+      const callId = await startCall(
         clientId,
         type,
         client.assignedTeamMember,
         new Date().toISOString().slice(0, 10),
       );
-      navigate({ to: "/clients/$clientId/call/$callId", params: { clientId, callId: id } });
+      navigate({ to: "/clients/$clientId/call/$callId", params: { clientId, callId } });
     }
   };
 
@@ -241,7 +242,7 @@ function Dashboard() {
           <table className="w-full text-xs sm:text-sm">
             <thead className="bg-secondary/80 text-left text-[11px] font-bold uppercase tracking-wider text-muted-foreground border-b border-border/80">
               <tr>
-                <th className="px-4 py-3 font-bold">Business &amp; Client</th>
+                <th className="px-4 py-3 font-bold">Business & Client</th>
                 <th className="hidden px-3 py-3 font-bold sm:table-cell">Assigned</th>
                 <th className="hidden px-3 py-3 font-bold md:table-cell">Next Call</th>
                 <th className="hidden px-3 py-3 font-bold md:table-cell">Date</th>
@@ -315,16 +316,18 @@ function Dashboard() {
         <NewClientDialog
           team={team}
           onClose={() => setShowNew(false)}
-          onCreate={(input) => {
-            const id = addClient(input);
-            setShowNew(false);
-            // Start the appropriate call immediately so staff can begin the checklist.
-            const callId = startCall(
+          onCreate={async (input) => {
+            // 1. Save the client (await DB id).
+            const id = await addClient(input);
+            // 2. Create the call + checklist items (await DB id).
+            const callId = await startCall(
               id,
               input.callType,
               input.assignedTeamMember,
               input.callDate ?? new Date().toISOString().slice(0, 10),
             );
+            setShowNew(false);
+            // 3. Navigate using the returned database IDs.
             navigate({ to: "/clients/$clientId/call/$callId", params: { clientId: id, callId } });
           }}
         />
@@ -355,7 +358,7 @@ function NewClientDialog({
 }: {
   team: { id: string; name: string }[];
   onClose: () => void;
-  onCreate: (input: NewClientInput) => void;
+  onCreate: (input: NewClientInput) => Promise<void>;
 }) {
   const [businessName, setBusinessName] = useState("");
   const [clientName, setClientName] = useState("");
@@ -365,8 +368,31 @@ function NewClientDialog({
   const [contactDetails, setContactDetails] = useState("");
   const [ghlLink, setGhlLink] = useState("");
   const [notes, setNotes] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [saveErr, setSaveErr] = useState("");
 
   const valid = businessName.trim() && clientName.trim() && assignedTeamMember && callType;
+
+  const submit = async () => {
+    if (saving || !valid) return; // prevent duplicate submissions
+    setSaving(true);
+    setSaveErr("");
+    try {
+      await onCreate({
+        businessName: businessName.trim(),
+        clientName: clientName.trim(),
+        assignedTeamMember,
+        callType,
+        ...(callDate ? { callDate } : {}),
+        ...(contactDetails ? { contactDetails } : {}),
+        ...(ghlLink ? { ghlLink } : {}),
+        ...(notes ? { notes } : {}),
+      });
+    } catch (e) {
+      setSaving(false);
+      setSaveErr(e instanceof Error ? e.message : "Could not create the client. Please retry.");
+    }
+  };
 
   return (
     <div
@@ -470,30 +496,25 @@ function NewClientDialog({
           </div>
         </div>
 
+        {saveErr && (
+          <div className="rounded-xl border border-destructive/50 bg-destructive/10 px-4 py-2 text-xs font-semibold text-destructive">
+            {saveErr}
+          </div>
+        )}
         <div className="flex justify-end gap-2 pt-2">
           <button
             onClick={onClose}
-            className="rounded-xl border border-border px-4 py-2 text-xs font-semibold hover:bg-secondary cursor-pointer min-h-[40px]"
+            disabled={saving}
+            className="rounded-xl border border-border px-4 py-2 text-xs font-semibold hover:bg-secondary disabled:opacity-50 cursor-pointer min-h-[40px]"
           >
             Cancel
           </button>
           <button
-            disabled={!valid}
-            onClick={() =>
-              onCreate({
-                businessName: businessName.trim(),
-                clientName: clientName.trim(),
-                assignedTeamMember,
-                callType,
-                ...(callDate ? { callDate } : {}),
-                ...(contactDetails ? { contactDetails } : {}),
-                ...(ghlLink ? { ghlLink } : {}),
-                ...(notes ? { notes } : {}),
-              })
-            }
+            disabled={!valid || saving}
+            onClick={submit}
             className="rounded-xl bg-primary px-5 py-2 text-xs font-bold text-primary-foreground disabled:opacity-50 cursor-pointer shadow-md shadow-primary/20 min-h-[40px]"
           >
-            Add &amp; Start Call
+            {saving ? "Saving…" : "Add & Start Call"}
           </button>
         </div>
       </div>

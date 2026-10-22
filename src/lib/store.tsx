@@ -36,7 +36,7 @@ export interface StoreApi {
   loading: boolean;
   loadError: string | null;
   reload: () => Promise<void>;
-  addClient: (input: import("./store-types").NewClientInput) => string;
+  addClient: (input: import("./store-types").NewClientInput) => Promise<string>;
   updateClient: (
     id: string,
     patch: Partial<import("./types").Client>,
@@ -49,7 +49,7 @@ export interface StoreApi {
     type: import("./types").CallType,
     staffMember: string,
     date?: string,
-  ) => string;
+  ) => Promise<string>;
   updateCall: (
     clientId: string,
     callId: string,

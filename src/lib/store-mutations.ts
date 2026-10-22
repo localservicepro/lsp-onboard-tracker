@@ -15,7 +15,6 @@ import type {
   TemplateItem,
   CallType,
 } from "./types";
-import { buildCallItems, buildCallGuides } from "./seed";
 import {
   getState,
   addClient as addClientFn,
@@ -87,52 +86,46 @@ export function useStoreActions(state: AppState, setState: SetState, reload: Rel
   );
 
   const addClient = useCallback(
-    (input: NewClientInput): string => {
-      const id = crypto.randomUUID();
-      const now = nowISO();
-      const client: Client = {
-        id,
-        businessName: input.businessName,
-        clientName: input.clientName,
-        assignedTeamMember: input.assignedTeamMember,
-        contactDetails: input.contactDetails,
-        ghlLink: input.ghlLink,
-        notes: input.notes,
-        nextCallType: input.callType,
-        nextCallDate: input.callDate,
-        calls: [],
-        isTestRecord: input.isTestRecord,
-        testPurpose: input.testPurpose,
-        accountContext: input.accountContext,
-        createdAt: now,
-        updatedAt: now,
-      };
-      setState((s) => ({ ...s, clients: [...s.clients, client] }));
-      void _addClient({ data: input }).catch(() => void reload());
+    async (input: NewClientInput): Promise<string> => {
+      // Persist to the database first and use the returned DB id, so
+      // navigation targets a real record that survives a state reload.
+      const res = await _addClient({ data: input });
+      const id = res.id;
+      await reload(); // reconcile local state with the database
       return id;
     },
-    [setState, _addClient, reload],
+    [_addClient, reload],
   );
 
   const updateClient = useCallback(
     (
       id: string,
-      patch: Partial<Omit<Client, "id" | "calls" | "audit">>,
+      patch: Partial<Omit<Client, "id" | "calls">>,
       _actor?: string,
       _reason?: string,
     ): void => {
       patchClient(id, (c) => ({ ...c, ...patch, updatedAt: nowISO() }));
+      const {
+        businessName,
+        clientName,
+        assignedTeamMember,
+        contactDetails,
+        ghlLink,
+        notes,
+        nextCallType,
+        nextCallDate,
+      } = patch;
       void _updateClient({
         data: {
           id,
-          ...(patch.businessName ? { businessName: patch.businessName } : {}),
-          ...(patch.clientName ? { clientName: patch.clientName } : {}),
-          ...(patch.assignedTeamMember ? { assignedTeamMember: patch.assignedTeamMember } : {}),
-          ...(patch.contactDetails !== undefined ? { contactDetails: patch.contactDetails } : {}),
-          ...(patch.ghlLink !== undefined ? { ghlLink: patch.ghlLink } : {}),
-          ...(patch.notes !== undefined ? { notes: patch.notes } : {}),
-          ...(patch.nextCallType ? { nextCallType: patch.nextCallType } : {}),
-          ...(patch.nextCallDate !== undefined ? { nextCallDate: patch.nextCallDate } : {}),
+          ...(businessName ? { businessName } : {}),
+          ...(clientName ? { clientName } : {}),
+          ...(assignedTeamMember ? { assignedTeamMember } : {}),
+          ...(contactDetails !== undefined ? { contactDetails } : {}),
+          ...(ghlLink !== undefined ? { ghlLink } : {}),
+          ...(notes !== undefined ? { notes } : {}),
+          ...(nextCallType ? { nextCallType } : {}),
+          ...(nextCallDate !== undefined ? { nextCallDate } : {}),
         },
       }).catch(() => void reload());
     },
@@ -148,47 +141,37 @@ export function useStoreActions(state: AppState, setState: SetState, reload: Rel
   );
 
   const startCall = useCallback(
-    (clientId: string, type: CallType, staffMember: string, date?: string): string => {
-      const id = crypto.randomUUID();
-      const callDate = date ?? new Date().toISOString().slice(0, 10);
-      const tpl = state.settings.templates.find((t) => t.callType === type);
-      const items = tpl ? buildCallItems(tpl) : [];
-      const guides = type === "onboarding" ? buildCallGuides(state.settings.guides) : [];
-      const call: Call = {
-        id,
-        clientId,
-        type,
-        date: callDate,
-        staffMember,
-        items,
-        guides,
-        createdAt: nowISO(),
-        updatedAt: nowISO(),
-      };
-      patchClient(clientId, (c) => ({
-        ...c,
-        updatedAt: nowISO(),
-        calls: [...c.calls, call],
-      }));
-      void _startCall({ data: { clientId, type, staffMember, ...(date ? { date } : {}) } }).catch(
-        () => void reload(),
-      );
+    async (
+      clientId: string,
+      type: CallType,
+      staffMember: string,
+      date?: string,
+    ): Promise<string> => {
+      // Persist the call + checklist items to the database first and use the
+      // returned DB call id, so navigation targets a real session that
+      // survives a state reload.
+      const res = await _startCall({
+        data: { clientId, type, staffMember, ...(date ? { date } : {}) },
+      });
+      const id = res.id;
+      await reload(); // reconcile local state with the database
       return id;
     },
-    [state.settings, patchClient, _startCall, reload],
+    [_startCall, reload],
   );
 
   const updateCall = useCallback(
     (clientId: string, callId: string, patch: Partial<Call>, _actor?: string): void => {
       patchCall(clientId, callId, (call) => ({ ...call, ...patch, updatedAt: nowISO() }));
+      const { staffMember, notes, followUpAction, followUpOwner, followUpDate } = patch;
       void _updateCall({
         data: {
           callId,
-          ...(patch.staffMember ? { staffMember: patch.staffMember } : {}),
-          ...(patch.notes !== undefined ? { notes: patch.notes } : {}),
-          ...(patch.followUpAction !== undefined ? { followUpAction: patch.followUpAction } : {}),
-          ...(patch.followUpOwner !== undefined ? { followUpOwner: patch.followUpOwner } : {}),
-          ...(patch.followUpDate !== undefined ? { followUpDate: patch.followUpDate } : {}),
+          ...(staffMember ? { staffMember } : {}),
+          ...(notes !== undefined ? { notes } : {}),
+          ...(followUpAction !== undefined ? { followUpAction } : {}),
+          ...(followUpOwner !== undefined ? { followUpOwner } : {}),
+          ...(followUpDate !== undefined ? { followUpDate } : {}),
         },
       }).catch(() => void reload());
     },
@@ -208,25 +191,17 @@ export function useStoreActions(state: AppState, setState: SetState, reload: Rel
         finishedAt: nowISO(),
         updatedAt: nowISO(),
       }));
+      const { notes, followUpAction, followUpOwner, followUpDate } = patch;
+      const payload = {
+        callId,
+        ...(notes !== undefined ? { notes } : {}),
+        ...(followUpAction !== undefined ? { followUpAction } : {}),
+        ...(followUpOwner !== undefined ? { followUpOwner } : {}),
+        ...(followUpDate !== undefined ? { followUpDate } : {}),
+      };
       try {
-        await _updateCall({
-          data: {
-            callId,
-            ...(patch.notes !== undefined ? { notes: patch.notes } : {}),
-            ...(patch.followUpAction !== undefined ? { followUpAction: patch.followUpAction } : {}),
-            ...(patch.followUpOwner !== undefined ? { followUpOwner: patch.followUpOwner } : {}),
-            ...(patch.followUpDate !== undefined ? { followUpDate: patch.followUpDate } : {}),
-          },
-        });
-        const res = await _finishCall({
-          data: {
-            callId,
-            ...(patch.notes !== undefined ? { notes: patch.notes } : {}),
-            ...(patch.followUpAction !== undefined ? { followUpAction: patch.followUpAction } : {}),
-            ...(patch.followUpOwner !== undefined ? { followUpOwner: patch.followUpOwner } : {}),
-            ...(patch.followUpDate !== undefined ? { followUpDate: patch.followUpDate } : {}),
-          },
-        });
+        await _updateCall({ data: payload });
+        const res = await _finishCall({ data: payload });
         await reload();
         const email = (res as { email?: { status?: string; error?: string } | undefined }).email;
         return { ok: true, emailError: email?.status === "failed" ? email.error : undefined };

@@ -28,6 +28,9 @@ function CallSessionPage() {
   const { clientId, callId } = Route.useParams();
   const {
     state,
+    loading,
+    loadError,
+    reload,
     setCallItem,
     setCallGuide,
     updateCall,
@@ -59,10 +62,36 @@ function CallSessionPage() {
   const fuOwnerRef = useRef<HTMLSelectElement>(null);
   const fuDateRef = useRef<HTMLInputElement>(null);
 
+  if (loading) {
+    return (
+      <div className="space-y-4 rounded-2xl border border-border bg-card p-8 text-center">
+        <p className="text-muted-foreground">Loading call session…</p>
+      </div>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <div className="space-y-4 rounded-2xl border border-destructive/50 bg-card p-8 text-center">
+        <p className="font-bold text-destructive">Could not load records.</p>
+        <p className="text-xs text-muted-foreground">{loadError}</p>
+        <button
+          onClick={() => void reload()}
+          className="inline-flex rounded-xl bg-primary px-4 py-2 text-sm font-bold text-primary-foreground cursor-pointer"
+        >
+          Retry
+        </button>
+      </div>
+    );
+  }
+
   if (!client || !call) {
     return (
       <div className="space-y-4 rounded-2xl border border-border bg-card p-8 text-center">
         <p className="text-muted-foreground">Call session not found.</p>
+        <p className="text-xs text-muted-foreground">
+          This call may not have saved correctly. Return to the client record and start a new call.
+        </p>
         <Link
           to="/clients/$clientId"
           params={{ clientId }}
