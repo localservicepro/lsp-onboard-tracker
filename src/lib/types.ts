@@ -17,6 +17,12 @@ export type TaskStatus =
   | "blocked"
   | "not_applicable";
 
+export type StaffVerificationStatus =
+  | "not_checked"
+  | "verified"
+  | "blocked"
+  | "not_applicable";
+
 export type ReviewOutcome = "recorded" | "sent" | "receipt_confirmed" | "failed" | "unknown";
 
 export type GuideChannel = "email" | "sms" | "in_app" | "call" | "other";
@@ -31,14 +37,26 @@ export interface AuditEntry {
   reason: string;
 }
 
+export interface AccessCheckItem {
+  id: string;
+  label: string; // e.g. "Client personally logged into phone app" | "Client selected correct business/subaccount"
+  checked: boolean;
+  verifiedAt?: string | undefined;
+  verifier?: string | undefined;
+  resultNote?: string | undefined;
+  audit: AuditEntry[];
+}
+
 export interface ConnectionItem {
   id: string;
   label: string;
+  required: boolean; // Explicitly required vs optional
   status: ConnectionStatus;
   verifiedAt?: string | undefined;
   verifier?: string | undefined;
   notes?: string | undefined;
   notApplicableReason?: string | undefined;
+  acknowledgedByReviewer?: boolean | undefined;
   audit: AuditEntry[];
 }
 
@@ -46,12 +64,26 @@ export interface TaskItem {
   id: string;
   label: string;
   status: TaskStatus;
-  clientConfirmed?: boolean | undefined;
-  evidence?: string | undefined;
-  completedBy?: string | undefined;
+  clientConfirmed?: boolean | undefined; // Confirmation client performed it themselves
+  evidence?: string | undefined; // Non-empty evidence note
+  completedBy?: string | undefined; // Staff member who observed
   completedAt?: string | undefined;
   notApplicableReason?: string | undefined;
+  acknowledgedByReviewer?: boolean | undefined;
   reviewOutcome?: ReviewOutcome | undefined;
+  audit: AuditEntry[];
+}
+
+export interface StaffVerificationItem {
+  id: string;
+  label: string; // "Staff checks recorded result in LSP"
+  status: StaffVerificationStatus;
+  verifier?: string | undefined;
+  verifiedAt?: string | undefined;
+  resultNote?: string | undefined;
+  reviewOutcome?: ReviewOutcome | undefined; // recorded | sent | receipt_confirmed | failed | unknown
+  notApplicableReason?: string | undefined;
+  acknowledgedByReviewer?: boolean | undefined;
   audit: AuditEntry[];
 }
 
@@ -60,9 +92,11 @@ export interface Blocker {
   summary: string;
   owner: string;
   nextAction: string;
+  dueDate?: string | undefined;
   createdAt: string;
   resolved: boolean;
   resolvedAt?: string | undefined;
+  resolutionNote?: string | undefined;
   audit: AuditEntry[];
 }
 
@@ -72,6 +106,7 @@ export interface GuideSentRecord {
   sentAt?: string | undefined;
   channel?: GuideChannel | undefined;
   sentBy?: string | undefined;
+  suppliedUrlOrVersion?: string | undefined;
   notes?: string | undefined;
   audit: AuditEntry[];
 }
@@ -98,8 +133,10 @@ export interface Client {
   overallStatus: OverallStatus;
   notes?: string | undefined;
   nextCallDate?: string | undefined;
+  accessChecks: AccessCheckItem[];
   connections: ConnectionItem[];
   tasks: TaskItem[];
+  staffVerification: StaffVerificationItem;
   blockers: Blocker[];
   guides: GuideSentRecord[];
   callSessions: CallSession[];
@@ -123,7 +160,7 @@ export interface ChecklistTemplate {
   id: string;
   name: string;
   description?: string | undefined;
-  connectionLabels: string[];
+  connectionLabels: { label: string; required: boolean }[];
   taskLabels: string[];
 }
 
@@ -153,6 +190,13 @@ export const TASK_STATUSES: { value: TaskStatus; label: string }[] = [
   { value: "not_applicable", label: "Not applicable" },
 ];
 
+export const STAFF_VERIFICATION_STATUSES: { value: StaffVerificationStatus; label: string }[] = [
+  { value: "not_checked", label: "Not checked" },
+  { value: "verified", label: "Verified" },
+  { value: "blocked", label: "Blocked" },
+  { value: "not_applicable", label: "Not applicable" },
+];
+
 export const REVIEW_OUTCOMES: { value: ReviewOutcome; label: string }[] = [
   { value: "recorded", label: "Request recorded" },
   { value: "sent", label: "Sent" },
@@ -176,22 +220,26 @@ export const GUIDE_CHANNELS: { value: GuideChannel; label: string }[] = [
   { value: "other", label: "Other" },
 ];
 
-export const DEFAULT_CONNECTION_LABELS = [
-  "Google account",
-  "Google Business Profile + correct review destination",
-  "Facebook business page",
-  "Instagram (where applicable)",
-  "Other agreed integrations",
+export const DEFAULT_ACCESS_CHECKS = [
+  "Client personally logged into phone app",
+  "Client selected correct business/subaccount",
 ];
 
-export const DEFAULT_TASK_LABELS = [
+export const DEFAULT_CONNECTION_CONFIGS: { label: string; required: boolean }[] = [
+  { label: "Google account", required: true },
+  { label: "Google Business Profile + correct review destination", required: true },
+  { label: "Facebook business page", required: true },
+  { label: "Instagram (where applicable)", required: false },
+  { label: "Other agreed integrations", required: false },
+];
+
+export const DEFAULT_CLIENT_PRACTICAL_TASKS = [
   "Client searches for an existing contact (avoid duplicates)",
   "Client manually adds an agreed contact",
   "Client locates the saved contact",
   "Client opens the review-request feature",
   "Client selects an agreed recipient and reviews the message",
   "Client personally sends the Google review request",
-  "Staff checks the recorded result",
 ];
 
 export const DEFAULT_GUIDE_IDS = {

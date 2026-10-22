@@ -2,8 +2,10 @@ import { createContext, useContext, useMemo, useState, useCallback, type ReactNo
 import type {
   AppState,
   Client,
+  AccessCheckItem,
   ConnectionItem,
   TaskItem,
+  StaffVerificationItem,
   Blocker,
   GuideSentRecord,
   CallSession,
@@ -14,13 +16,18 @@ import type {
   AuditEntry,
   ConnectionStatus,
   TaskStatus,
+  StaffVerificationStatus,
   ReviewOutcome,
   GuideChannel,
 } from "./types";
 import { seedState } from "./seed";
-import { DEFAULT_CONNECTION_LABELS, DEFAULT_TASK_LABELS } from "./types";
+import {
+  DEFAULT_ACCESS_CHECKS,
+  DEFAULT_CONNECTION_CONFIGS,
+  DEFAULT_CLIENT_PRACTICAL_TASKS,
+} from "./types";
 
-let counter = 1000;
+let counter = 2000;
 function nextId(prefix: string): string {
   counter += 1;
   return `${prefix}-${counter}`;
@@ -50,10 +57,14 @@ interface StoreApi {
   addClient: (input: NewClientInput) => string;
   updateClient: (id: string, patch: Partial<Omit<Client, "id" | "audit">>, actor: string, reason?: string) => void;
   deleteClient: (id: string) => void;
+  // Access checks
+  setAccessCheck: (clientId: string, checkId: string, patch: Partial<AccessCheckItem>, actor: string, reason?: string) => void;
   // Connections
   setConnection: (clientId: string, connId: string, patch: Partial<ConnectionItem>, actor: string, reason?: string) => void;
-  // Tasks
+  // Practical tasks
   setTask: (clientId: string, taskId: string, patch: Partial<TaskItem>, actor: string, reason?: string) => void;
+  // Staff verification
+  setStaffVerification: (clientId: string, patch: Partial<StaffVerificationItem>, actor: string, reason?: string) => void;
   // Blockers
   addBlocker: (clientId: string, input: NewBlockerInput, actor: string) => void;
   updateBlocker: (clientId: string, blockerId: string, patch: Partial<Blocker>, actor: string, reason?: string) => void;
@@ -91,6 +102,7 @@ export interface NewBlockerInput {
   summary: string;
   owner: string;
   nextAction: string;
+  dueDate?: string | undefined;
 }
 
 export interface NewCallInput {
@@ -125,18 +137,31 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const addClient = useCallback((input: NewClientInput) => {
     const id = nextId("client");
     const now = ts();
-    const connections: ConnectionItem[] = DEFAULT_CONNECTION_LABELS.map((label, i) => ({
-      id: `conn-${id}-${i}`,
+    const accessChecks: AccessCheckItem[] = DEFAULT_ACCESS_CHECKS.map((label, i) => ({
+      id: `acc-${id}-${i}`,
       label,
+      checked: false,
+      audit: [],
+    }));
+    const connections: ConnectionItem[] = DEFAULT_CONNECTION_CONFIGS.map((cfg, i) => ({
+      id: `conn-${id}-${i}`,
+      label: cfg.label,
+      required: cfg.required,
       status: "not_checked",
       audit: [],
     }));
-    const tasks: TaskItem[] = DEFAULT_TASK_LABELS.map((label, i) => ({
+    const tasks: TaskItem[] = DEFAULT_CLIENT_PRACTICAL_TASKS.map((label, i) => ({
       id: `task-${id}-${i}`,
       label,
       status: "not_started",
       audit: [],
     }));
+    const staffVerification: StaffVerificationItem = {
+      id: `sv-${id}`,
+      label: "Staff checks recorded result in LSP",
+      status: "not_checked",
+      audit: [],
+    };
     const guides: GuideSentRecord[] = state.settings.guides.map((g) => ({
       guideId: g.id,
       sent: false,
@@ -154,8 +179,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       overallStatus: "not_started",
       notes: input.notes,
       nextCallDate: input.nextCallDate,
+      accessChecks,
       connections,
       tasks,
+      staffVerification,
       blockers: [],
       guides,
       callSessions: [],
@@ -170,6 +197,33 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const deleteClient = useCallback((id: string) => {
     setState((s) => ({ ...s, clients: s.clients.filter((c) => c.id !== id) }));
   }, []);
+
+  const setAccessCheck = useCallback(
+    (clientId: string, checkId: string, patch: Partial<AccessCheckItem>, actor: string, reason?: string) => {
+      setState((s) => ({
+        ...s,
+        clients: s.clients.map((c) => {
+          if (c.id !== clientId) return c;
+          return {
+            ...c,
+            updatedAt: ts(),
+            accessChecks: c.accessChecks.map((a) => {
+              if (a.id !== checkId) return a;
+              const from = a.checked ? "Checked" : "Unchecked";
+              const next: AccessCheckItem = { ...a, ...patch };
+              if (patch.checked !== undefined && patch.checked !== a.checked) {
+                next.audit = pushAudit(a.audit, actor, `Access check: ${a.label}`, from, patch.checked ? "Checked" : "Unchecked", reason ?? "");
+              } else if (reason) {
+                next.audit = pushAudit(a.audit, actor, `Access check: ${a.label}`, from, from, reason);
+              }
+              return next;
+            }),
+          };
+        }),
+      }));
+    },
+    [],
+  );
 
   const setConnection = useCallback(
     (clientId: string, connId: string, patch: Partial<ConnectionItem>, actor: string, reason?: string) => {
@@ -225,6 +279,26 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     [],
   );
 
+  const setStaffVerification = useCallback(
+    (clientId: string, patch: Partial<StaffVerificationItem>, actor: string, reason?: string) => {
+      setState((s) => ({
+        ...s,
+        clients: s.clients.map((c) => {
+          if (c.id !== clientId) return c;
+          const from = c.staffVerification.status;
+          const next: StaffVerificationItem = { ...c.staffVerification, ...patch };
+          if (patch.status && patch.status !== from) {
+            next.audit = pushAudit(c.staffVerification.audit, actor, "Staff verification", from, patch.status, reason ?? "");
+          } else if (reason) {
+            next.audit = pushAudit(c.staffVerification.audit, actor, "Staff verification", from, from, reason);
+          }
+          return { ...c, updatedAt: ts(), staffVerification: next };
+        }),
+      }));
+    },
+    [],
+  );
+
   const addBlocker = useCallback(
     (clientId: string, input: NewBlockerInput, actor: string) => {
       setState((s) => ({
@@ -236,6 +310,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             summary: input.summary,
             owner: input.owner,
             nextAction: input.nextAction,
+            dueDate: input.dueDate,
             createdAt: ts(),
             resolved: false,
             audit: [{ id: nextId("aud"), at: ts(), actor, field: "Blocker created", from: "", to: "Open", reason: input.summary }],
@@ -261,10 +336,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
               const next: Blocker = { ...b, ...patch };
               if (patch.resolved !== undefined && patch.resolved !== b.resolved) {
                 next.audit = pushAudit(b.audit, actor, "Blocker resolution", String(b.resolved), String(patch.resolved), reason ?? "");
+                if (patch.resolved === true) next.resolvedAt = ts();
               } else if (reason) {
                 next.audit = pushAudit(b.audit, actor, "Blocker updated", "", "", reason);
               }
-              if (patch.resolved === true) next.resolvedAt = ts();
               return next;
             }),
           };
@@ -303,6 +378,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   const addCallSession = useCallback(
     (clientId: string, input: NewCallInput, actor: string) => {
+      void actor;
       const id = nextId("call");
       setState((s) => ({
         ...s,
@@ -389,7 +465,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         ...s.settings,
         templates: [
           ...s.settings.templates,
-          { id: nextId("tpl"), name, description, connectionLabels: [...DEFAULT_CONNECTION_LABELS], taskLabels: [...DEFAULT_TASK_LABELS] },
+          {
+            id: nextId("tpl"),
+            name,
+            description,
+            connectionLabels: DEFAULT_CONNECTION_CONFIGS.map((c) => ({ label: c.label, required: c.required })),
+            taskLabels: [...DEFAULT_CLIENT_PRACTICAL_TASKS],
+          },
         ],
       },
     }));
@@ -417,8 +499,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       addClient,
       updateClient,
       deleteClient,
+      setAccessCheck,
       setConnection,
       setTask,
+      setStaffVerification,
       addBlocker,
       updateBlocker,
       setGuide,
@@ -440,8 +524,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       addClient,
       updateClient,
       deleteClient,
+      setAccessCheck,
       setConnection,
       setTask,
+      setStaffVerification,
       addBlocker,
       updateBlocker,
       setGuide,
@@ -469,15 +555,14 @@ export function useStore(): StoreApi {
   return ctx;
 }
 
-// Convenience hook returning just the state.
 export function useAppState(): AppState {
   return useStore().state;
 }
 
-// Re-export status types for action helpers.
 export type {
   ConnectionStatus,
   TaskStatus,
+  StaffVerificationStatus,
   ReviewOutcome,
   GuideChannel,
 };
