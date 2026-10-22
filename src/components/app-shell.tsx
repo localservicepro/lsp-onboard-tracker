@@ -100,6 +100,7 @@ function ShellContent({ children }: { children: ReactNode }) {
   const needsFollowUpCount = state.clients.filter(
     (c) => deriveClientStatus(c, guides) === "needs_followup",
   ).length;
+  const [menuOpen, setMenuOpen] = useState(false);
 
   // Reload the store when auth is confirmed — StoreProvider mounts before
   // auth is ready, so its initial getState() 401s. Retry here.
@@ -129,7 +130,9 @@ function ShellContent({ children }: { children: ReactNode }) {
               Onboarding Tracker
             </span>
           </Link>
-          <nav className="ml-auto flex items-center gap-1">
+
+          {/* Desktop nav */}
+          <nav className="ml-auto hidden items-center gap-1 sm:flex">
             {NAV.map((item) => {
               const active = item.exact ? pathname === item.to : pathname.startsWith(item.to);
               return (
@@ -153,9 +156,11 @@ function ShellContent({ children }: { children: ReactNode }) {
               );
             })}
           </nav>
+
+          {/* Desktop staff controls */}
           {staff && (
-            <div className="ml-2 flex items-center gap-2">
-              <span className="hidden text-xs font-semibold text-muted-foreground sm:block">
+            <div className="ml-2 hidden items-center gap-2 sm:flex">
+              <span className="text-xs font-semibold text-muted-foreground">
                 {staff.displayName}
               </span>
               <button
@@ -166,7 +171,68 @@ function ShellContent({ children }: { children: ReactNode }) {
               </button>
             </div>
           )}
+
+          {/* Mobile menu toggle */}
+          <button
+            onClick={() => setMenuOpen((v) => !v)}
+            aria-label="Toggle navigation menu"
+            aria-expanded={menuOpen}
+            className="ml-auto inline-flex items-center justify-center rounded-md border border-border px-2.5 py-1.5 text-sm font-bold text-foreground hover:bg-secondary cursor-pointer sm:hidden"
+          >
+            <span className="sr-only">Menu</span>
+            {menuOpen ? "✕" : "☰"}
+          </button>
         </div>
+
+        {/* Mobile nav panel */}
+        {menuOpen && (
+          <nav className="border-t border-border bg-card px-4 py-3 sm:hidden">
+            <div className="space-y-1">
+              {NAV.map((item) => {
+                const active = item.exact ? pathname === item.to : pathname.startsWith(item.to);
+                return (
+                  <Link
+                    key={item.to}
+                    to={item.to}
+                    onClick={() => setMenuOpen(false)}
+                    className={
+                      "flex items-center justify-between rounded-lg px-3 py-2.5 text-sm font-medium transition-colors " +
+                      (active
+                        ? "bg-secondary text-secondary-foreground"
+                        : "text-muted-foreground hover:bg-accent/20 hover:text-accent")
+                    }
+                  >
+                    <span className="flex items-center gap-2">
+                      {item.label}
+                      {item.to === "/follow-up" && needsFollowUpCount > 0 && (
+                        <span className="grid h-5 min-w-5 place-items-center rounded-full bg-destructive px-1 text-xs font-semibold text-destructive-foreground">
+                          {needsFollowUpCount}
+                        </span>
+                      )}
+                    </span>
+                    <span className="text-muted-foreground">→</span>
+                  </Link>
+                );
+              })}
+            </div>
+            {staff && (
+              <div className="mt-3 flex items-center justify-between border-t border-border pt-3">
+                <span className="text-xs font-semibold text-muted-foreground">
+                  {staff.displayName}
+                </span>
+                <button
+                  onClick={() => {
+                    setMenuOpen(false);
+                    void signOut();
+                  }}
+                  className="rounded-md border border-border px-2.5 py-1 text-xs font-bold text-muted-foreground hover:bg-secondary hover:text-foreground cursor-pointer"
+                >
+                  Sign out
+                </button>
+              </div>
+            )}
+          </nav>
+        )}
       </header>
       <main className="mx-auto max-w-6xl px-4 py-6">
         {loading ? (
@@ -190,9 +256,9 @@ function ShellContent({ children }: { children: ReactNode }) {
       </main>
       <footer className="mx-auto max-w-6xl px-4 pb-10 pt-6">
         <div className="rounded-md border border-border/70 bg-card/40 px-3 py-1.5 text-[11px] text-muted-foreground">
-          <strong className="font-medium text-foreground/90">LSP Onboarding Tracker</strong> — Cloud-connected
-          database storage. Access requires approved staff sign-in. Email notifications require
-          provider setup before live use.
+          <strong className="font-medium text-foreground/90">LSP Onboarding Tracker</strong> —
+          Cloud-connected database storage. Access requires approved staff sign-in. Email
+          notifications require provider setup before live use.
         </div>
       </footer>
     </div>

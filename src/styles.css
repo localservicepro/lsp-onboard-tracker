@@ -65,11 +65,11 @@
   --popover-foreground: oklch(0.98 0.005 250);
 
   /* Deep Blue extracted from Local Service Pro logo: oklch(0.50 0.175 255) */
-  --primary: oklch(0.50 0.175 255);
+  --primary: oklch(0.5 0.175 255);
   --primary-foreground: oklch(0.99 0 0);
 
   --secondary: oklch(0.22 0.04 250); /* Slate navy secondary bg */
-  --secondary-foreground: oklch(0.90 0.01 250);
+  --secondary-foreground: oklch(0.9 0.01 250);
 
   --muted: oklch(0.22 0.03 250);
   --muted-foreground: oklch(0.68 0.03 250); /* Muted blue-grey supporting text */
@@ -86,7 +86,7 @@
   --ring: oklch(0.76 0.135 220); /* Cyan focus indicator */
 
   --chart-1: oklch(0.68 0.18 150); /* Accessible Green for Completed */
-  --chart-2: oklch(0.50 0.175 255); /* Deep Blue for In Progress */
+  --chart-2: oklch(0.5 0.175 255); /* Deep Blue for In Progress */
   --chart-3: oklch(0.76 0.135 220); /* Cyan/Turquoise for Highlights */
   --chart-4: oklch(0.78 0.16 75); /* Amber for pending */
   --chart-5: oklch(0.62 0.22 25); /* Red for blocked */

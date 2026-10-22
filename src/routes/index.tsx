@@ -186,7 +186,57 @@ function Dashboard() {
         </label>
       </div>
 
-      <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
+      {/* Mobile: stacked cards (no horizontal overflow) */}
+      <div className="space-y-2 sm:hidden">
+        {rows.length === 0 && (
+          <div className="rounded-2xl border border-border bg-card p-6 text-center text-xs text-muted-foreground">
+            No client records match the current filter selection.
+          </div>
+        )}
+        {rows.map(({ client, derived, nextType }) => {
+          const unfinished = unfinishedCallOfType(client, nextType);
+          return (
+            <div key={client.id} className="rounded-2xl border border-border bg-card p-3 shadow-sm">
+              <Link to="/clients/$clientId" params={{ clientId: client.id }} className="block">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="font-bold text-foreground break-words">
+                    {client.businessName}
+                  </span>
+                  {client.isTestRecord && (
+                    <span className="rounded-full border border-amber-500/50 bg-amber-500/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-300">
+                      Test
+                    </span>
+                  )}
+                </div>
+                <div className="text-xs text-muted-foreground">{client.clientName}</div>
+              </Link>
+              <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+                <span className="text-muted-foreground">
+                  Assigned:{" "}
+                  <span className="text-foreground font-semibold">{client.assignedTeamMember}</span>
+                </span>
+                <span className="text-muted-foreground">
+                  Next:{" "}
+                  <span className="text-foreground font-semibold">{CALL_TYPE_LABEL[nextType]}</span>
+                </span>
+              </div>
+              <div className="mt-2 flex items-center justify-between gap-2">
+                <StatusBadge status={derived} />
+                <button
+                  onClick={() => onStart(client.id, nextType)}
+                  className="inline-flex items-center gap-1.5 rounded-xl bg-primary px-3.5 py-2 text-xs font-bold text-primary-foreground shadow-md shadow-primary/20 hover:bg-primary/90 transition-colors cursor-pointer min-h-[36px]"
+                >
+                  {unfinished ? "Continue Call" : "Start Call"}
+                  <span>→</span>
+                </button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Desktop: table (hidden on mobile to avoid horizontal overflow) */}
+      <div className="hidden overflow-hidden rounded-2xl border border-border bg-card shadow-sm sm:block">
         <div className="overflow-x-auto">
           <table className="w-full text-xs sm:text-sm">
             <thead className="bg-secondary/80 text-left text-[11px] font-bold uppercase tracking-wider text-muted-foreground border-b border-border/80">
@@ -218,7 +268,7 @@ function Dashboard() {
                         className="block group"
                       >
                         <div className="flex flex-wrap items-center gap-2">
-                          <span className="font-bold text-foreground group-hover:text-accent transition-colors">
+                          <span className="font-bold text-foreground group-hover:text-accent transition-colors break-words">
                             {client.businessName}
                           </span>
                           {client.isTestRecord && (

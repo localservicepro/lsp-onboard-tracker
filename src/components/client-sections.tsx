@@ -120,40 +120,42 @@ export function CallItemRow({
 
   return (
     <div className={`rounded-xl border p-3 transition-colors ${STATUS_TONE[item.status]}`}>
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex min-w-0 flex-1 items-center gap-2">
-          <span
-            className={`rounded px-1.5 py-0.5 text-[10px] font-bold uppercase ${isClientAction ? "text-accent" : "text-primary"}`}
-          >
-            {isClientAction ? "Client" : "Staff"}
+      {/* Title row — full width, wraps; no truncation */}
+      <div className="flex flex-wrap items-center gap-2">
+        <span
+          className={`rounded px-1.5 py-0.5 text-[10px] font-bold uppercase ${isClientAction ? "text-accent" : "text-primary"}`}
+        >
+          {isClientAction ? "Client" : "Staff"}
+        </span>
+        <span className="text-sm font-bold text-foreground break-words min-w-0 flex-1">
+          {item.label}
+        </span>
+        {item.required ? (
+          <span className="rounded bg-primary/20 px-1.5 py-0.5 text-[10px] font-extrabold uppercase tracking-wide text-primary">
+            Req
           </span>
-          <span className="truncate text-sm font-bold text-foreground">{item.label}</span>
-          {item.required ? (
-            <span className="rounded bg-primary/20 px-1.5 py-0.5 text-[10px] font-extrabold uppercase tracking-wide text-primary">
-              Req
-            </span>
-          ) : (
-            <span className="rounded bg-secondary px-1.5 py-0.5 text-[10px] font-semibold text-muted-foreground">
-              Opt
-            </span>
-          )}
-        </div>
-        <div className="flex items-center gap-2">
-          <span className={`text-xs font-bold px-2 py-0.5 rounded ${STATUS_BADGE[item.status]}`}>
-            {itemStatusLabel(item)}
+        ) : (
+          <span className="rounded bg-secondary px-1.5 py-0.5 text-[10px] font-semibold text-muted-foreground">
+            Opt
           </span>
-          <select
-            className={inputCls + " w-auto font-semibold"}
-            value={item.status}
-            onChange={(e) => setStatus(e.target.value as ItemStatus)}
-          >
-            {statuses.map((s) => (
-              <option key={s.value} value={s.value}>
-                {s.label}
-              </option>
-            ))}
-          </select>
-        </div>
+        )}
+      </div>
+      {/* Status controls — stacked below the title */}
+      <div className="mt-2 flex flex-wrap items-center gap-2">
+        <span className={`text-xs font-bold px-2 py-0.5 rounded ${STATUS_BADGE[item.status]}`}>
+          {itemStatusLabel(item)}
+        </span>
+        <select
+          className={inputCls + " w-auto font-semibold"}
+          value={item.status}
+          onChange={(e) => setStatus(e.target.value as ItemStatus)}
+        >
+          {statuses.map((s) => (
+            <option key={s.value} value={s.value}>
+              {s.label}
+            </option>
+          ))}
+        </select>
       </div>
 
       {/* Demo & Client Practice — two clearly labelled boxes.
@@ -374,16 +376,20 @@ export function GuideDerivedRow({
 
   return (
     <div className={`rounded-xl border p-3 ${STATUS_TONE[eff.status]}`}>
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex min-w-0 flex-1 items-center gap-2">
-          <span className="rounded px-1.5 py-0.5 text-[10px] font-bold uppercase text-primary">
-            Staff
-          </span>
-          <span className="truncate text-sm font-bold text-foreground">{item.label}</span>
-          <span className="rounded bg-secondary px-1.5 py-0.5 text-[10px] font-semibold text-muted-foreground">
-            Auto
-          </span>
-        </div>
+      {/* Title row — full width, wraps; no truncation */}
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="rounded px-1.5 py-0.5 text-[10px] font-bold uppercase text-primary">
+          Staff
+        </span>
+        <span className="text-sm font-bold text-foreground break-words min-w-0 flex-1">
+          {item.label}
+        </span>
+        <span className="rounded bg-secondary px-1.5 py-0.5 text-[10px] font-semibold text-muted-foreground">
+          Auto
+        </span>
+      </div>
+      {/* Status — stacked below the title */}
+      <div className="mt-2">
         <span className={`text-xs font-bold px-2 py-0.5 rounded ${STATUS_BADGE[eff.status]}`}>
           {itemStatusLabel(eff)}
         </span>
